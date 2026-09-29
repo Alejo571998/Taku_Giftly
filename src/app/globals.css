@@ -1,0 +1,227 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-heading);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-accent-ink: var(--accent-ink);
+  --color-gold: var(--gold);
+  --color-gold-ink: var(--gold-ink);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* Identidad Giftly — lifestyle + editorial + calidez */
+  --brand-coral: #e86a5b;
+  --brand-cream: #fff8f0;
+  --brand-sage: #718b72;
+  --brand-charcoal: #252525;
+  --brand-yellow: #f4c95d;
+  --brand-gray: #e9e5df;
+  --brand-gray-text: #716d68;
+
+  --background: var(--brand-cream);
+  --foreground: var(--brand-charcoal);
+  --card: #ffffff;
+  --card-foreground: var(--brand-charcoal);
+  --popover: #ffffff;
+  --popover-foreground: var(--brand-charcoal);
+  --primary: var(--brand-coral);
+  --primary-foreground: #ffffff;
+  /* Coral oscuro para texto sobre fondos claros (contraste AA) */
+  --primary-ink: #b8483a;
+  --secondary: #f7efe4;
+  --secondary-foreground: var(--brand-charcoal);
+  --muted: #f4ede3;
+  --muted-foreground: var(--brand-gray-text);
+  --accent: var(--brand-sage);
+  --accent-foreground: #ffffff;
+  /* Salvia oscuro para texto de estados positivos (contraste AA) */
+  --accent-ink: #4b654d;
+  --gold: var(--brand-yellow);
+  --gold-ink: #7a5a0c;
+  --destructive: #c2410c;
+  --border: var(--brand-gray);
+  --input: var(--brand-gray);
+  --ring: var(--brand-coral);
+  --chart-1: var(--brand-coral);
+  --chart-2: var(--brand-sage);
+  --chart-3: var(--brand-yellow);
+  --chart-4: #f2a494;
+  --chart-5: var(--brand-charcoal);
+  --radius: 0.9rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: var(--brand-charcoal);
+  --sidebar-primary: var(--brand-coral);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f7efe4;
+  --sidebar-accent-foreground: var(--brand-charcoal);
+  --sidebar-border: var(--brand-gray);
+  --sidebar-ring: var(--brand-coral);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading font-normal;
+  }
+}
+
+/* Papel con textura sutil, evita el plano digital genérico */
+.paper-grain {
+  background-image: radial-gradient(
+      rgb(37 37 37 / 0.03) 1px,
+      transparent 1px
+    ),
+    radial-gradient(rgb(232 106 91 / 0.035) 1px, transparent 1px);
+  background-size: 22px 22px, 34px 34px;
+  background-position: 0 0, 11px 17px;
+}
+
+/* Tarjeta tipo "sticker" con recorte redondeado */
+.ticket {
+  position: relative;
+}
+.ticket::before,
+.ticket::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--background);
+  transform: translateY(-50%);
+}
+.ticket::before {
+  left: -9px;
+}
+.ticket::after {
+  right: -9px;
+}
+/* ============================================================
+   Taku — animaciones del personaje (solo transform/opacity:
+   nunca se altera la imagen original).
+   ============================================================ */
+@keyframes taku-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-6px) rotate(-1.5deg); }
+}
+@keyframes taku-think {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-8px) rotate(4deg); }
+}
+@keyframes taku-happy {
+  0%, 100% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-14px) scale(1.04, 0.97); }
+  55% { transform: translateY(0) scale(0.97, 1.03); }
+  75% { transform: translateY(-5px) scale(1); }
+}
+@keyframes taku-celebrate {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  20% { transform: translateY(-18px) rotate(-8deg); }
+  40% { transform: translateY(0) rotate(0deg); }
+  60% { transform: translateY(-14px) rotate(8deg); }
+  80% { transform: translateY(0) rotate(0deg); }
+}
+@keyframes taku-wave {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-9deg); }
+  40% { transform: rotate(7deg); }
+  60% { transform: rotate(-5deg); }
+  80% { transform: rotate(3deg); }
+}
+@keyframes taku-curious {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-10deg) translateX(-3px); }
+}
+@keyframes taku-sad {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(3px) rotate(-3deg); }
+}
+@keyframes taku-peek-in {
+  from { transform: translateY(70%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes taku-bubble-in {
+  from { transform: translateY(6px) scale(0.96); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+@keyframes taku-spark {
+  0% { transform: translate(0, 0) scale(0.4); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(1); opacity: 0; }
+}
+
+.taku-mood-idle { animation: taku-float 4.5s ease-in-out infinite; }
+.taku-mood-thinking { animation: taku-think 1.6s ease-in-out infinite; }
+.taku-mood-happy { animation: taku-happy 0.9s ease-out 2; }
+.taku-mood-celebrate { animation: taku-celebrate 1.2s ease-in-out 3; }
+.taku-mood-wave { animation: taku-wave 1.1s ease-in-out 2; transform-origin: 50% 90%; }
+.taku-mood-curious { animation: taku-curious 1.8s ease-in-out 2; transform-origin: 50% 90%; }
+.taku-mood-sad { animation: taku-sad 2.4s ease-in-out infinite; }
+.taku-peek { animation: taku-peek-in 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.taku-bubble { animation: taku-bubble-in 0.25s ease-out both; }
+.taku-spark { animation: taku-spark 1.4s ease-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="taku-mood-"],
+  .taku-peek,
+  .taku-bubble,
+  .taku-spark {
+    animation: none !important;
+  }
+}
