@@ -13,7 +13,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AccountCard } from "@/components/mis-regalos/account-card";
 import { TakuSpot } from "@/components/taku/taku-spot";
+import { useTaku } from "@/components/taku/taku-provider";
+import { completePendingMerge, getAccountState, type AccountState } from "@/lib/account";
 import { apiRequest } from "@/lib/client-auth";
 import { occasionLabel, recipientPhrase } from "@/lib/catalog";
 import { formatDate } from "@/lib/format";
@@ -23,6 +26,9 @@ export function MyGiftsPage() {
   const [sessions, setSessions] = useState<UserSessionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [account, setAccount] = useState<AccountState>({ kind: "unavailable" });
+  const [reloadKey, setReloadKey] = useState(0);
+  const { say } = useTaku();
 
   useEffect(() => {
     let cancelled = false;
@@ -30,10 +36,20 @@ export function MyGiftsPage() {
       setLoading(true);
       setError(null);
       try {
-        const result = await apiRequest<{ sessions: UserSessionSummary[] }>(
-          "/api/user/sessions"
-        );
-        if (!cancelled) setSessions(result.sessions);
+        // Volviendo de un link mágico: traer lo hecho en este navegador.
+        const merged = await completePendingMerge();
+        const [state, result] = await Promise.all([
+          getAccountState(),
+          apiRequest<{ sessions: UserSessionSummary[] }>("/api/user/sessions"),
+        ]);
+        if (cancelled) return;
+        setAccount(state);
+        setSessions(result.sessions);
+        if (merged) {
+          say({ text: "¡Listo! Sumé a tu cuenta lo que tenías en este navegador.", mood: "celebrate" });
+        } else if (state.kind === "account" && window.location.search.includes("cuenta=")) {
+          say({ text: "¡Tus regalos quedaron guardados!", mood: "celebrate" });
+        }
       } catch (e) {
         if (!cancelled)
           setError(
@@ -47,7 +63,15 @@ export function MyGiftsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey, say]);
+
+  const accountCard = (initialMode: "save" | "signin") => (
+    <AccountCard
+      state={account}
+      initialMode={initialMode}
+      onSignedOut={() => setReloadKey((k) => k + 1)}
+    />
+  );
 
   if (loading) {
     return (
@@ -73,6 +97,23 @@ export function MyGiftsPage() {
           Reintentar
         </Button>
       </TakuSpot>
+    );
+  }
+
+  if ((!sessions || sessions.length === 0) && account.kind !== "unavailable") {
+    return (
+      <div className="mx-auto w-full max-w-2xl px-4 py-12">
+        <h1 className="font-heading text-4xl tracking-tight">Mis regalos</h1>
+        <p className="mt-2 text-muted-foreground">
+          Todavía no hay búsquedas en este navegador. Empezá una nueva o, si ya
+          guardaste regalos en otro dispositivo, entrá con tu email.
+        </p>
+        <Button className="mt-5 h-11 rounded-full px-6 font-semibold" render={<Link href="/regalo" />}>
+          Encontrar un regalo
+          <ArrowRight className="size-4" aria-hidden="true" />
+        </Button>
+        {accountCard("signin")}
+      </div>
     );
   }
 
@@ -183,6 +224,8 @@ export function MyGiftsPage() {
           );
         })}
       </ul>
+
+      {accountCard("save")}
     </div>
   );
 }

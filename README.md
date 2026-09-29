@@ -57,6 +57,49 @@ y cargalo en el nuevo con `psql <conexión-nueva> -f giftly-data.sql` después d
 paso 3. Los usuarios anónimos no migran: cada navegador obtiene una identidad
 nueva, así que "Mis regalos" arranca vacío.
 
+## Precios reales con Mercado Libre
+
+1. Entrá a <https://developers.mercadolibre.com.ar/devcenter> con tu cuenta de
+   Mercado Libre y tocá **Crear aplicación**.
+2. Completá nombre ("Giftly"), descripción y logo. En **URI de redirect** poné
+   la URL de la app (ej. `https://tu-app.vercel.app`); Giftly no la usa, pero
+   el formulario la pide. Scopes: lectura alcanza; no hacen falta
+   notificaciones.
+3. Copiá **App ID** → `ML_CLIENT_ID` y **Secret Key** → `ML_CLIENT_SECRET` en
+   `.env` (y en Vercel).
+4. Corré `npm run check:ml` (opcional: `npm run check:ml -- "auriculares gamer"`).
+   Te dice si el token funciona y cuál búsqueda habilita tu app.
+
+Mercado Libre bloquea la búsqueda sin token (403) y, según la app, también
+con token. Giftly prueba primero la búsqueda de publicaciones y, si está
+bloqueada, el catálogo de productos con sus vendedores. Si ambas fallan, sigue
+mostrando precios **estimados** (etiquetados) y links de búsqueda.
+
+Cada regalo guarda hasta 3 ofertas (tienda/vendedor, precio, envío gratis,
+stock, link y fecha de consulta). En el detalle se ven como podio 🥇🥈🥉 y se
+pueden actualizar (como mucho cada 30 minutos por regalo).
+
+## Cuenta opcional con email ("Mis regalos" en cualquier dispositivo)
+
+Solo con Supabase. En *Mis regalos* se puede **guardar** con un email (la
+identidad anónima se convierte en cuenta: mismo usuario, sin contraseña) o
+**entrar** desde otro dispositivo con un link mágico; lo hecho de forma
+anónima en ese navegador se suma a la cuenta.
+
+Configuración en Supabase:
+
+- *Authentication → URL Configuration*: **Site URL** = URL de producción y en
+  **Redirect URLs** agregar `https://tu-app.vercel.app/**` y
+  `http://localhost:3000/**`.
+- *Authentication → Sign In / Providers → Email*: habilitado, con
+  "Confirm email" activado.
+- **Envío de emails:** el SMTP de prueba de Supabase solo manda a miembros del
+  equipo y con un límite muy bajo por hora. Para usuarios reales configurá un
+  SMTP propio en *Authentication → Emails → SMTP Settings* (por ejemplo
+  [Resend](https://resend.com), plan gratuito, con un dominio verificado).
+- Opcional: personalizá las plantillas "Confirm email change" y "Magic link"
+  con el tono de Taku.
+
 ## Arquitectura
 
 ```

@@ -25,7 +25,8 @@ import { TakuImage } from "@/components/taku/taku-image";
 import { TakuSpot } from "@/components/taku/taku-spot";
 import { apiRequest } from "@/lib/client-auth";
 import { interestLabel, recipientPhrase } from "@/lib/catalog";
-import { formatARS, formatBudgetRange, formatDateTime } from "@/lib/format";
+import { PriceComparison } from "@/components/gift-detail/price-comparison";
+import { formatARS, formatBudgetRange } from "@/lib/format";
 import { storeSearchLinks } from "@/lib/products/store-links";
 import type { GiftOption, GiftSession, Group } from "@/lib/types";
 
@@ -116,7 +117,7 @@ export function GiftDetailPage() {
     option.estimatedPrice != null &&
     session.budgetMax != null &&
     option.estimatedPrice > session.budgetMax;
-  const hasVerifiedOffer = !option.isPriceEstimated && option.productUrl != null;
+  const hasVerifiedOffer = option.offers.length > 0 || (!option.isPriceEstimated && option.productUrl != null);
   const searchLinks = storeSearchLinks(option.name, option.giftType);
 
   return (
@@ -230,33 +231,10 @@ export function GiftDetailPage() {
           Dónde comprarlo
         </h2>
 
-        {hasVerifiedOffer ? (
-          <div className="mt-4 flex flex-col gap-3 rounded-2xl border-2 border-accent/40 bg-accent/5 p-4 sm:flex-row sm:items-center">
-            <div className="flex-1">
-              <p className="text-xs font-bold tracking-wide text-accent-ink uppercase">
-                🥇 Mejor precio encontrado
-              </p>
-              <p className="mt-1 font-semibold">{option.storeName}</p>
-              <PriceTag price={option.estimatedPrice} isEstimated={false} />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Actualizado el {formatDateTime(option.createdAt)} · el precio puede cambiar en la tienda
-              </p>
-            </div>
-            <Button
-              className="h-11 rounded-full px-6 font-semibold"
-              render={<a href={option.productUrl!} target="_blank" rel="noopener noreferrer" />}
-            >
-              Ver oferta
-              <ExternalLink className="size-4" aria-hidden="true" />
-            </Button>
-          </div>
-        ) : (
-          <p className="mt-3 rounded-2xl bg-muted px-4 py-3 text-sm text-muted-foreground">
-            Todavía no tengo un precio verificado en tienda: el valor de arriba
-            es una <strong className="font-semibold text-foreground">estimación</strong>.
-            Buscalo acá para ver precios reales y actualizados.
-          </p>
-        )}
+        <PriceComparison
+          option={option}
+          onUpdated={(updated) => setData((d) => (d ? { ...d, option: updated } : d))}
+        />
 
         <p className="mt-5 text-sm font-semibold">
           {hasVerifiedOffer ? "Compará en otras tiendas" : "Buscar en tiendas"}

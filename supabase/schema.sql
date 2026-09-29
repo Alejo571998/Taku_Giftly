@@ -55,8 +55,14 @@ create table if not exists public.gift_options (
   pros text[] default '{}',
   cons text[] default '{}',
   gift_type text default 'physical',
+  offers jsonb not null default '[]'::jsonb,
+  prices_updated_at timestamptz,
   created_at timestamptz default now()
 );
+
+-- Comparación de precios (proyectos creados con versiones anteriores)
+alter table public.gift_options add column if not exists offers jsonb not null default '[]'::jsonb;
+alter table public.gift_options add column if not exists prices_updated_at timestamptz;
 
 create table if not exists public.groups (
   id uuid primary key default gen_random_uuid(),

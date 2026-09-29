@@ -8,6 +8,7 @@ import type {
   Group,
   GroupBundle,
   GroupParticipant,
+  ProductInfo,
   UserSessionSummary,
   Vote,
 } from "@/lib/types";
@@ -45,7 +46,14 @@ async function readDb(): Promise<LocalDb> {
   try {
     const raw = await fs.readFile(DB_PATH, "utf-8");
     const parsed = JSON.parse(raw) as Partial<LocalDb>;
-    return { ...emptyDb, ...parsed };
+    const db = { ...emptyDb, ...parsed };
+    // Datos guardados antes de existir la comparación de precios
+    db.options = db.options.map((o) => ({
+      ...o,
+      offers: o.offers ?? [],
+      pricesUpdatedAt: o.pricesUpdatedAt ?? null,
+    }));
+    return db;
   } catch {
     return { ...emptyDb };
   }
@@ -291,6 +299,46 @@ export class LocalDataStore implements DataStore {
         ? db.participants.filter((p) => p.groupId === group.id).length
         : 0;
       return { session, optionCount, group, participantCount };
+    });
+  }
+
+  async updateOptionPrices(optionId: string, product: ProductInfo): Promise<GiftOption> {
+    return withLock(async () => {
+      const db = await readDb();
+      const option = db.options.find((o) => o.id === optionId);
+      if (!option) throw new Error("Opción no encontrada");
+      Object.assign(option, {
+        estimatedPrice: product.price,
+        currency: product.currency,
+        imageUrl: product.imageUrl,
+        productUrl: product.productUrl,
+        storeName: product.storeName,
+        isPriceEstimated: product.isEstimated,
+        offers: product.offers,
+        pricesUpdatedAt: product.pricesUpdatedAt,
+      });
+      await writeDb(db);
+      return option;
+    });
+  }
+
+  async reassignUser(fromUserId: string, toUserId: string): Promise<void> {
+    return withLock(async () => {
+      const db = await readDb();
+      for (const s of db.sessions) if (s.creatorId === fromUserId) s.creatorId = toUserId;
+      for (const g of db.groups) if (g.creatorId === fromUserId) g.creatorId = toUserId;
+      const accountGroups = new Set(
+        db.participants.filter((p) => p.userId === toUserId).map((p) => p.groupId)
+      );
+      const dropped = new Set<string>();
+      for (const p of db.participants) {
+        if (p.userId !== fromUserId) continue;
+        if (accountGroups.has(p.groupId)) dropped.add(p.id);
+        else p.userId = toUserId;
+      }
+      db.participants = db.participants.filter((p) => !dropped.has(p.id));
+      db.votes = db.votes.filter((v) => !dropped.has(v.participantId));
+      await writeDb(db);
     });
   }
 

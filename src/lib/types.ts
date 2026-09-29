@@ -66,6 +66,8 @@ export interface GiftOption {
   pros: string[];
   cons: string[];
   giftType: GiftType;
+  offers: ProductOffer[];
+  pricesUpdatedAt: string | null;
   createdAt: string;
 }
 
@@ -134,6 +136,19 @@ export interface UserSessionSummary {
   participantCount: number;
 }
 
+/** Una oferta real encontrada en una tienda (nunca inventada). */
+export interface ProductOffer {
+  store: string;
+  title: string;
+  price: number;
+  currency: string;
+  url: string;
+  imageUrl: string | null;
+  freeShipping: boolean;
+  /** false si la tienda informa que no hay stock. */
+  available: boolean;
+}
+
 export interface ProductInfo {
   price: number;
   currency: string;
@@ -141,6 +156,10 @@ export interface ProductInfo {
   productUrl: string | null;
   storeName: string | null;
   isEstimated: boolean;
+  /** Mejores ofertas ordenadas por precio (vacío si no hay datos reales). */
+  offers: ProductOffer[];
+  /** Cuándo se consultaron los precios (null si es estimado). */
+  pricesUpdatedAt: string | null;
 }
 
 export interface CandidateWithProduct extends GiftCandidate {

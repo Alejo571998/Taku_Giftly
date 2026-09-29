@@ -5,6 +5,8 @@ import type {
   Group,
   GroupBundle,
   GroupParticipant,
+  ProductInfo,
+  ProductOffer,
   UserSessionSummary,
   Vote,
 } from "@/lib/types";
@@ -47,6 +49,8 @@ interface OptionRow {
   pros: string[];
   cons: string[];
   gift_type: string;
+  offers: ProductOffer[] | null;
+  prices_updated_at: string | null;
   created_at: string;
 }
 
@@ -117,6 +121,8 @@ function mapOption(row: OptionRow): GiftOption {
     pros: row.pros ?? [],
     cons: row.cons ?? [],
     giftType: row.gift_type as GiftOption["giftType"],
+    offers: row.offers ?? [],
+    pricesUpdatedAt: row.prices_updated_at ?? null,
     createdAt: row.created_at,
   };
 }
@@ -182,6 +188,8 @@ function toOptionRow(
     pros: option.pros,
     cons: option.cons,
     gift_type: option.giftType,
+    offers: option.offers,
+    prices_updated_at: option.pricesUpdatedAt,
   };
 }
 
@@ -593,6 +601,58 @@ export class SupabaseDataStore implements DataStore {
         groupsBySession.get(session.id)?.id ?? ""
       ) ?? 0,
     }));
+  }
+
+  async updateOptionPrices(optionId: string, product: ProductInfo): Promise<GiftOption> {
+    const client = throwIfNoClient();
+    const { data, error } = await client
+      .from("gift_options")
+      .update({
+        estimated_price: product.price,
+        currency: product.currency,
+        image_url: product.imageUrl,
+        product_url: product.productUrl,
+        store_name: product.storeName,
+        is_price_estimated: product.isEstimated,
+        offers: product.offers,
+        prices_updated_at: product.pricesUpdatedAt,
+      })
+      .eq("id", optionId)
+      .select("*")
+      .single();
+    if (error || !data) {
+      throw new Error(`No se pudieron actualizar los precios: ${error?.message}`);
+    }
+    return mapOption(data as OptionRow);
+  }
+
+  async reassignUser(fromUserId: string, toUserId: string): Promise<void> {
+    const client = throwIfNoClient();
+    const steps = [
+      client.from("gift_sessions").update({ creator_id: toUserId }).eq("creator_id", fromUserId),
+      client.from("groups").update({ creator_id: toUserId }).eq("creator_id", fromUserId),
+    ];
+    for (const step of steps) {
+      const { error } = await step;
+      if (error) throw new Error(`No se pudo pasar la cuenta: ${error.message}`);
+    }
+
+    // Participaciones: si la cuenta ya estaba en ese grupo, se conserva la
+    // de la cuenta (y sus votos); si no, la anónima pasa a la cuenta.
+    const { data: rows } = await client
+      .from("group_participants")
+      .select("id, group_id, user_id")
+      .in("user_id", [fromUserId, toUserId]);
+    const accountGroups = new Set(
+      (rows ?? []).filter((r) => r.user_id === toUserId).map((r) => r.group_id as string)
+    );
+    for (const row of (rows ?? []).filter((r) => r.user_id === fromUserId)) {
+      const query = accountGroups.has(row.group_id as string)
+        ? client.from("group_participants").delete().eq("id", row.id)
+        : client.from("group_participants").update({ user_id: toUserId }).eq("id", row.id);
+      const { error } = await query;
+      if (error) throw new Error(`No se pudo pasar la cuenta: ${error.message}`);
+    }
   }
 
   async getGroupBySession(sessionId: string): Promise<Group | null> {

@@ -5,6 +5,7 @@ import type {
   Group,
   GroupBundle,
   GroupParticipant,
+  ProductInfo,
   UserSessionSummary,
   Vote,
 } from "@/lib/types";
@@ -47,6 +48,13 @@ export interface DataStore {
   setGroupWinner(groupId: string, winnerOptionId: string): Promise<Group>;
   listUserSessions(userId: string): Promise<UserSessionSummary[]>;
   getGroupBySession(sessionId: string): Promise<Group | null>;
+  /** Guarda precios/ofertas recién consultados de una opción. */
+  updateOptionPrices(optionId: string, product: ProductInfo): Promise<GiftOption>;
+  /**
+   * Pasa búsquedas, grupos y participaciones de una identidad anónima a una
+   * cuenta con email (el usuario entró desde otro navegador).
+   */
+  reassignUser(fromUserId: string, toUserId: string): Promise<void>;
 }
 
 const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

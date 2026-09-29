@@ -180,7 +180,14 @@ export function ResultsPage() {
           <h2 className="font-heading text-3xl leading-tight">{top.name}</h2>
           <p className="text-pretty text-foreground/80">{top.whyItFits}</p>
           <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-2">
-            <PriceTag price={top.estimatedPrice} isEstimated={top.isPriceEstimated} size="lg" />
+            <span>
+              <PriceTag price={top.estimatedPrice} isEstimated={top.isPriceEstimated} size="lg" />
+              {top.offers.length > 1 && (
+                <span className="block text-xs font-medium text-accent-ink">
+                  Mejor precio entre {top.offers.length} vendedores
+                </span>
+              )}
+            </span>
             <span className="inline-flex items-center gap-1 text-sm font-semibold text-primary-ink group-hover:underline">
               Ver por qué y dónde comprarlo
               <ArrowRight className="size-4" aria-hidden="true" />

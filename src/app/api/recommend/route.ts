@@ -53,13 +53,14 @@ export async function POST(req: NextRequest) {
 
     const enriched = await Promise.all(
       candidates.map(async (candidate): Promise<GiftOption> => {
-        const product = await ProductSearchService.search(
-          candidate.name,
-          candidate.category,
-          input.budgetMin,
-          input.budgetMax,
-          candidate.estimatedPrice
-        );
+        const product = await ProductSearchService.search({
+          query: candidate.name,
+          category: candidate.category,
+          giftType: candidate.giftType,
+          budgetMin: input.budgetMin,
+          budgetMax: input.budgetMax,
+          hintPrice: candidate.estimatedPrice,
+        });
 
         const priceForScoring = product.isEstimated
           ? candidate.estimatedPrice
@@ -89,6 +90,8 @@ export async function POST(req: NextRequest) {
           pros: candidate.pros,
           cons: candidate.cons,
           giftType: candidate.giftType,
+          offers: product.offers,
+          pricesUpdatedAt: product.pricesUpdatedAt,
           createdAt: "",
         };
       })
