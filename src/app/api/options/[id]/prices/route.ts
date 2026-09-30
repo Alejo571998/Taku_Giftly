@@ -3,6 +3,7 @@ import { getDataStore } from "@/lib/data";
 import { env } from "@/lib/env";
 import { ProductSearchService } from "@/lib/products/product-search-service";
 import { resolveUserId, jsonError } from "@/lib/server-auth";
+import { LIMITS, checkRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
 
 /** No se vuelve a consultar la tienda antes de este tiempo. */
 const MIN_REFRESH_MS = 30 * 60 * 1000;
@@ -17,6 +18,9 @@ export async function POST(
 ) {
   const userId = await resolveUserId(req);
   if (!userId) return jsonError(401, "Necesitás una identidad anónima para continuar.");
+  const [limit, windowMs] = LIMITS.pricesPerIp;
+  const rl = checkRateLimit(`prices:${clientIp(req)}`, limit, windowMs);
+  if (!rl.ok) return tooManyRequests("Demasiadas consultas de precios. Probá más tarde.", rl.retryAfterSeconds);
   if (!env.hasMercadolibre) {
     return jsonError(409, "La comparación de precios en tiendas todavía no está activada.");
   }

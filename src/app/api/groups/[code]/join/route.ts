@@ -1,6 +1,8 @@
 import type { NextRequest } from "next/server";
 import { getDataStore } from "@/lib/data";
 import { resolveUserId, jsonError } from "@/lib/server-auth";
+import { LIMITS, checkRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
+import { cleanText } from "@/lib/validation/gift-input";
 
 export async function POST(
   req: NextRequest,
@@ -14,7 +16,11 @@ export async function POST(
     displayName?: string;
   } | null;
 
-  const displayName = body?.displayName?.trim();
+  const [limit, windowMs] = LIMITS.groupActionPerIp;
+  const rl = checkRateLimit(`group-action:${clientIp(req)}`, limit, windowMs);
+  if (!rl.ok) return tooManyRequests("Vas muy rápido. Esperá unos segundos.", rl.retryAfterSeconds);
+
+  const displayName = cleanText(body?.displayName, 60);
   if (!displayName || displayName.length < 2 || displayName.length > 40) {
     return jsonError(400, "Contanos tu nombre (entre 2 y 40 caracteres).");
   }

@@ -100,6 +100,38 @@ Configuración en Supabase:
 - Opcional: personalizá las plantillas "Confirm email change" y "Magic link"
   con el tono de Taku.
 
+## Tests
+
+```bash
+npm test          # corre toda la suite una vez
+npm run test:watch
+```
+
+Vitest en entorno Node, siempre offline (modo local, sin OpenAI ni Mercado
+Libre reales, datos en una carpeta temporal). Cubre compatibilidad, "cosas a
+evitar", ranking y empates, el mock honesto, validación, límites de uso, el
+cliente de Mercado Libre (con `fetch` simulado) y el flujo completo de la API:
+recomendar → grupo → unirse → votar → empate → ganador.
+
+GitHub Actions (`.github/workflows/ci.yml`) corre lint, tipos, tests y build en
+cada push a `main`.
+
+## Límites de uso
+
+Cada búsqueda llama a la IA, así que `/api/recommend` tiene dos barreras:
+
+- **Por usuario (en la base):** 5 búsquedas cada 10 minutos.
+- **Por IP (en memoria):** 20 por hora. En Vercel cada instancia cuenta por
+  separado: es una barrera extra, no exacta.
+
+También hay límites por IP para consultar precios, crear grupos, unirse y
+votar (ver `src/lib/rate-limit.ts`). Al superarlos la API responde `429` con
+`Retry-After`. Las respuestas del wizard se validan contra el catálogo y los
+textos libres se recortan a 400 caracteres antes de llegar al prompt.
+
+Recomendado además: en <https://platform.openai.com/settings/organization/limits>
+poné un **tope de gasto mensual** para la key de OpenAI.
+
 ## Arquitectura
 
 ```

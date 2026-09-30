@@ -1,50 +1,35 @@
 import type { NextRequest } from "next/server";
-import type { GiftSessionInput, GiftOption } from "@/lib/types";
+import type { GiftOption } from "@/lib/types";
 import { AIRecommendationService } from "@/lib/ai/ai-recommendation-service";
 import { ProductSearchService } from "@/lib/products/product-search-service";
 import { computeCompatibilityScore, computeBudgetFit } from "@/lib/scoring/compatibility-score";
 import { getDataStore } from "@/lib/data";
 import { resolveUserId, jsonError } from "@/lib/server-auth";
-
-function validateInput(body: Partial<GiftSessionInput>): GiftSessionInput | null {
-  if (
-    typeof body.recipientRelationship !== "string" ||
-    !body.recipientRelationship ||
-    typeof body.occasion !== "string" ||
-    !body.occasion ||
-    typeof body.ageRange !== "string" ||
-    !body.ageRange ||
-    !Array.isArray(body.interests) ||
-    body.interests.length === 0 ||
-    typeof body.budgetMin !== "number" ||
-    (typeof body.budgetMax !== "number" && body.budgetMax !== null)
-  ) {
-    return null;
-  }
-  return {
-    recipientName: typeof body.recipientName === "string" ? body.recipientName : "",
-    recipientRelationship: body.recipientRelationship,
-    occasion: body.occasion,
-    occasionDate: typeof body.occasionDate === "string" ? body.occasionDate : null,
-    ageRange: body.ageRange,
-    budgetMin: body.budgetMin,
-    budgetMax: body.budgetMax,
-    interests: body.interests.map(String),
-    recentHints: typeof body.recentHints === "string" ? body.recentHints : "",
-    thingsToAvoid: typeof body.thingsToAvoid === "string" ? body.thingsToAvoid : "",
-    additionalNotes:
-      typeof body.additionalNotes === "string" ? body.additionalNotes : "",
-  };
-}
+import { LIMITS, checkRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
+import { validateGiftInput } from "@/lib/validation/gift-input";
 
 export async function POST(req: NextRequest) {
   const userId = await resolveUserId(req);
   if (!userId) return jsonError(401, "Necesitás una identidad anónima para continuar.");
 
-  const body = (await req.json().catch(() => null)) as Partial<GiftSessionInput> | null;
-  const input = validateInput(body ?? {});
-  if (!input) {
-    return jsonError(400, "Faltan datos para generar recomendaciones.");
+  const body = await req.json().catch(() => null);
+  const validation = validateGiftInput(body);
+  if (!validation.ok) return jsonError(400, validation.error);
+  const input = validation.input;
+
+  // Cada búsqueda llama a la IA (cuesta plata): límite por IP y por usuario.
+  const [ipLimit, ipWindow] = LIMITS.recommendPerIp;
+  const perIp = checkRateLimit(`recommend:ip:${clientIp(req)}`, ipLimit, ipWindow);
+  if (!perIp.ok) {
+    return tooManyRequests("Hiciste muchas búsquedas seguidas. Probá de nuevo en un rato.", perIp.retryAfterSeconds);
+  }
+  const since = new Date(Date.now() - LIMITS.recommendPerUserWindowMs).toISOString();
+  const recent = await getDataStore().countSessionsSince(userId, since);
+  if (recent >= LIMITS.recommendPerUser) {
+    return tooManyRequests(
+      "Ya generaste varias búsquedas en pocos minutos. Esperá un ratito y volvé a intentar.",
+      LIMITS.recommendPerUserWindowMs / 1000
+    );
   }
 
   try {

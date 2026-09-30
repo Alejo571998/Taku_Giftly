@@ -55,6 +55,8 @@ export interface DataStore {
    * cuenta con email (el usuario entró desde otro navegador).
    */
   reassignUser(fromUserId: string, toUserId: string): Promise<void>;
+  /** Búsquedas creadas por el usuario desde una fecha (límite de uso). */
+  countSessionsSince(userId: string, sinceIso: string): Promise<number>;
 }
 
 const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

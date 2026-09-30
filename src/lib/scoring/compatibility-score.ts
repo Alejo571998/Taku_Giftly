@@ -238,17 +238,40 @@ export function computeAvoidancePenalty(
   thingsToAvoid: string | null
 ): number {
   if (!thingsToAvoid) return 0;
-  const tokens = thingsToAvoid
-    .toLowerCase()
-    .split(/[,\n;]| y | o | e /)
-    .map((t) => t.trim())
-    .filter((t) => t.length > 2);
+  // Frases naturales ("Ya tiene muchos perfumes"): se comparan palabras
+  // con significado, sin acentos y sin plural, contra el regalo.
+  const avoid = new Set(meaningfulStems(thingsToAvoid));
+  if (avoid.size === 0) return 0;
+  const gift = meaningfulStems([name, category, ...tags].join(" "));
+  return gift.some((word) => avoid.has(word)) ? AVOID_PENALTY : 0;
+}
 
-  const haystack = [name, category, ...tags].map((v) => v.toLowerCase()).join(" ");
-  for (const token of tokens) {
-    if (haystack.includes(token)) return AVOID_PENALTY;
-  }
-  return 0;
+/** Palabras de relleno frecuentes en "cosas a evitar". */
+const AVOID_STOPWORDS = new Set([
+  "tiene", "tienen", "tenia", "muchos", "muchas", "mucho", "mucha", "varios",
+  "varias", "otro", "otra", "otros", "otras", "nada", "algo", "cosas", "cosa",
+  "quiere", "queria", "regalo", "regalos", "regalar", "nunca", "gusta",
+  "gustan", "odia", "odian", "porque", "pero", "para", "como", "esta", "este",
+  "estos", "estas", "tampoco", "demasiados", "demasiadas", "siempre", "usar",
+  "cualquier", "ningun", "ninguno", "ninguna", "sobre", "todo", "todos",
+]);
+
+/** Singular aproximado: perfumes/perfume → perfum, relojes/reloj → reloj. */
+function stem(word: string): string {
+  let w = word;
+  if (w.length > 4 && w.endsWith("s")) w = w.slice(0, -1);
+  if (w.length > 4 && w.endsWith("e")) w = w.slice(0, -1);
+  return w;
+}
+
+function meaningfulStems(text: string): string[] {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 3 && !AVOID_STOPWORDS.has(w))
+    .map(stem);
 }
 
 export interface CompatibilityBreakdown {

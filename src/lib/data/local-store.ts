@@ -23,7 +23,8 @@ interface LocalDb {
   votes: Vote[];
 }
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+// GIFTLY_DATA_DIR permite aislar los datos (tests).
+const DATA_DIR = process.env.GIFTLY_DATA_DIR ?? path.join(process.cwd(), ".data");
 const DB_PATH = path.join(DATA_DIR, "giftly.json");
 
 const emptyDb: LocalDb = {
@@ -340,6 +341,11 @@ export class LocalDataStore implements DataStore {
       db.votes = db.votes.filter((v) => !dropped.has(v.participantId));
       await writeDb(db);
     });
+  }
+
+  async countSessionsSince(userId: string, sinceIso: string): Promise<number> {
+    const db = await readDb();
+    return db.sessions.filter((s) => s.creatorId === userId && s.createdAt >= sinceIso).length;
   }
 
   async getGroupBySession(sessionId: string): Promise<Group | null> {

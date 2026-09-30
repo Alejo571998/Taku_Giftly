@@ -655,6 +655,17 @@ export class SupabaseDataStore implements DataStore {
     }
   }
 
+  async countSessionsSince(userId: string, sinceIso: string): Promise<number> {
+    const client = throwIfNoClient();
+    const { count, error } = await client
+      .from("gift_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("creator_id", userId)
+      .gte("created_at", sinceIso);
+    if (error) throw new Error(`No se pudo verificar el límite: ${error.message}`);
+    return count ?? 0;
+  }
+
   async getGroupBySession(sessionId: string): Promise<Group | null> {
     const client = throwIfNoClient();
     const { data, error } = await client

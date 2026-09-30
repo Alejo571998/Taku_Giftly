@@ -2,10 +2,16 @@ import type { NextRequest } from "next/server";
 import { getDataStore } from "@/lib/data";
 import { generateInviteCode } from "@/lib/data/store";
 import { resolveUserId, jsonError } from "@/lib/server-auth";
+import { LIMITS, checkRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
+import { cleanText } from "@/lib/validation/gift-input";
 
 export async function POST(req: NextRequest) {
   const userId = await resolveUserId(req);
   if (!userId) return jsonError(401, "Necesitás una identidad anónima para continuar.");
+
+  const [limit, windowMs] = LIMITS.groupCreatePerIp;
+  const rl = checkRateLimit(`groups:${clientIp(req)}`, limit, windowMs);
+  if (!rl.ok) return tooManyRequests("Creaste muchos grupos seguidos. Probá más tarde.", rl.retryAfterSeconds);
 
   const body = (await req.json().catch(() => null)) as {
     sessionId?: string;
@@ -46,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     const group = await getDataStore().createGroup({
       giftSessionId: body.sessionId,
-      name: body.name.trim().slice(0, 80),
+      name: cleanText(body.name, 80),
       creatorId: userId,
       inviteCode,
     });
@@ -54,7 +60,7 @@ export async function POST(req: NextRequest) {
     await getDataStore().joinGroup(
       group.id,
       userId,
-      body.displayName.trim().slice(0, 40)
+      cleanText(body.displayName, 40)
     );
 
     const groupData = await getDataStore().getGroupByCode(group.inviteCode);

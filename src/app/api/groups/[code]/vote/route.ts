@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { getDataStore } from "@/lib/data";
 import { resolveUserId, jsonError } from "@/lib/server-auth";
+import { LIMITS, checkRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
 
 export async function POST(
   req: NextRequest,
@@ -14,6 +15,10 @@ export async function POST(
     giftOptionId?: string;
     score?: number;
   } | null;
+
+  const [limit, windowMs] = LIMITS.groupActionPerIp;
+  const rl = checkRateLimit(`group-action:${clientIp(req)}`, limit, windowMs);
+  if (!rl.ok) return tooManyRequests("Vas muy rápido. Esperá unos segundos.", rl.retryAfterSeconds);
 
   const score = body?.score;
   if (typeof score !== "number" || !Number.isInteger(score) || score < 1 || score > 5) {
