@@ -11,7 +11,13 @@ export function GET() {
     problems.push(
       env.forceLocal
         ? "NEXT_PUBLIC_GIFTLY_DATA_MODE=local está activo: en producción hay que borrarlo."
-        : "Faltan variables de Supabase (URL, anon key y/o service role key)."
+        : `Faltan variables de Supabase: ${[
+            !env.supabaseUrl && "NEXT_PUBLIC_SUPABASE_URL",
+            !env.supabaseAnonKey && "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+            !env.supabaseServiceRoleKey && "SUPABASE_SERVICE_ROLE_KEY",
+          ]
+            .filter(Boolean)
+            .join(", ")}.`
     );
   }
   if (!env.hasOpenAIKey) problems.push("Falta OPENAI_API_KEY: se usan ideas de ejemplo.");
