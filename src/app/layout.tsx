@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { env } from "@/lib/env";
 import { DM_Serif_Display, Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/header";
@@ -30,9 +31,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-  ),
+  metadataBase: new URL(env.siteUrl),
   title: {
     default: "Giftly — ¿Qué le regalo?",
     template: "%s · Giftly",
@@ -44,6 +43,9 @@ export const metadata: Metadata = {
     type: "website",
     locale: "es_AR",
     siteName: "Giftly",
+  },
+  twitter: {
+    card: "summary_large_image",
   },
 };
 

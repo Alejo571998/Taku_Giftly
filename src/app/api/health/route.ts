@@ -21,6 +21,11 @@ export function GET() {
     );
   }
   if (!env.hasOpenAIKey) problems.push("Falta OPENAI_API_KEY: se usan ideas de ejemplo.");
+  if (onVercel && /localhost/.test(env.appUrl)) {
+    problems.push(
+      `NEXT_PUBLIC_APP_URL apunta a localhost: se usa ${env.siteUrl} (conviene corregirla en Vercel).`
+    );
+  }
   if (!env.hasMercadolibre) problems.push("Faltan ML_CLIENT_ID/ML_CLIENT_SECRET: precios estimados.");
 
   return Response.json(
@@ -28,6 +33,7 @@ export function GET() {
       ok: !(onVercel && !env.hasSupabase),
       environment: onVercel ? process.env.VERCEL_ENV ?? "vercel" : "local",
       dataMode: env.hasSupabase ? "supabase" : "local",
+      siteUrl: env.siteUrl,
       supabaseProject: env.supabaseUrl ? new URL(env.supabaseUrl).hostname.split(".")[0].slice(0, 4) + "…" : null,
       openai: env.hasOpenAIKey,
       mercadolibre: env.hasMercadolibre,

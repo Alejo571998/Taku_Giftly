@@ -47,6 +47,21 @@ export const env = {
   get appUrl() {
     return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   },
+  /**
+   * URL pública real (links absolutos: previews de WhatsApp, metadata).
+   * Si NEXT_PUBLIC_APP_URL quedó en localhost en un deploy de Vercel, usa la
+   * URL de producción que Vercel expone automáticamente.
+   */
+  get siteUrl() {
+    const configured = process.env.NEXT_PUBLIC_APP_URL;
+    if (configured && !/\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(configured)) {
+      return configured.replace(/\/$/, "");
+    }
+    const vercelHost =
+      process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+    if (process.env.VERCEL && vercelHost) return `https://${vercelHost}`;
+    return configured ?? "http://localhost:3000";
+  },
   get isLocalMode() {
     return !this.hasSupabase;
   },
