@@ -303,6 +303,21 @@ export class LocalDataStore implements DataStore {
     });
   }
 
+  async addOptions(sessionId: string, options: GiftOption[]): Promise<GiftOption[]> {
+    return withLock(async () => {
+      const db = await readDb();
+      const withIds = options.map((option) => ({
+        ...option,
+        id: randomUUID(),
+        giftSessionId: sessionId,
+        createdAt: nowIso(),
+      }));
+      db.options.push(...withIds);
+      await writeDb(db);
+      return withIds;
+    });
+  }
+
   async updateOptionPrices(optionId: string, product: ProductInfo): Promise<GiftOption> {
     return withLock(async () => {
       const db = await readDb();

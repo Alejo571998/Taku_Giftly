@@ -6,6 +6,7 @@ import { GET as getGroup } from "@/app/api/groups/[code]/route";
 import { POST as joinGroup } from "@/app/api/groups/[code]/join/route";
 import { POST as castVote } from "@/app/api/groups/[code]/vote/route";
 import { POST as finalize } from "@/app/api/groups/[code]/finalize/route";
+import { POST as moreIdeas } from "@/app/api/sessions/[id]/more/route";
 import { resetRateLimits } from "@/lib/rate-limit";
 import type { GroupBundle } from "@/lib/types";
 
@@ -137,5 +138,44 @@ describe("protecciones de /api/recommend", () => {
       last = (await recommend(request("/api/recommend", crypto.randomUUID(), wizardAnswers, "9.9.9.9"))).status;
     }
     expect(last).toBe(429);
+  });
+});
+
+describe("más ideas", () => {
+  beforeEach(() => resetRateLimits());
+
+  it("suma ideas nuevas sin repetir y respeta permisos", async () => {
+    const creator = crypto.randomUUID();
+    const rec = await json<{ sessionId: string; options: { name: string }[] }>(
+      await recommend(request("/api/recommend", creator, wizardAnswers))
+    );
+    const id = rec.sessionId;
+
+    const other = await moreIdeas(request(`/api/sessions/${id}/more`, crypto.randomUUID(), {}), ctx({ id }));
+    expect(other.status).toBe(403);
+
+    const res = await moreIdeas(request(`/api/sessions/${id}/more`, creator, {}), ctx({ id }));
+    expect(res.status).toBe(200);
+    const { options } = await json<{ options: { name: string }[] }>(res);
+    expect(options.length).toBeGreaterThan(0);
+    const before = new Set(rec.options.map((o) => o.name));
+    for (const o of options) expect(before.has(o.name), o.name).toBe(false);
+  });
+
+  it("no agrega ideas si el grupo ya eligió", async () => {
+    const creator = crypto.randomUUID();
+    const rec = await json<{ sessionId: string; options: { id: string }[] }>(
+      await recommend(request("/api/recommend", creator, wizardAnswers))
+    );
+    const id = rec.sessionId;
+    const { group } = await json<{ group: { inviteCode: string } }>(
+      await createGroup(request("/api/groups", creator, { sessionId: id, name: "G", displayName: "Ale" }))
+    );
+    const code = group.inviteCode;
+    await castVote(request(`/api/groups/${code}/vote`, creator, { giftOptionId: rec.options[0].id, score: 5 }), ctx({ code }));
+    await finalize(request(`/api/groups/${code}/finalize`, creator, {}), ctx({ code }));
+
+    const res = await moreIdeas(request(`/api/sessions/${id}/more`, creator, {}), ctx({ id }));
+    expect(res.status).toBe(409);
   });
 });

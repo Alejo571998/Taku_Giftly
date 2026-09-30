@@ -41,4 +41,12 @@ describe("buildMockCandidates (IA de respaldo)", () => {
       expect(c.estimatedPrice).toBeLessThanOrEqual(50_000);
     }
   });
+
+  it("con exclusiones propone ideas distintas", () => {
+    const input = makeInput({ interests: ["gaming"], recipientRelationship: "hermano", ageRange: "18-24" });
+    const first = buildMockCandidates(input).map((c) => c.name);
+    const second = buildMockCandidates(input, first).map((c) => c.name);
+    expect(second.length).toBeGreaterThanOrEqual(3);
+    for (const name of second) expect(first).not.toContain(name);
+  });
 });

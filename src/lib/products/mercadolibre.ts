@@ -73,22 +73,35 @@ function toHttps(url: string | undefined | null): string | null {
   return url.replace(/^http:\/\//i, "https://");
 }
 
+/** Palabras con significado, sin acentos y en singular aproximado. */
 function tokens(text: string): string[] {
   return text
     .toLowerCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .split(/[^a-z0-9]+/)
-    .filter((t) => t.length > 3);
+    .filter((t) => t.length > 3)
+    .map((w) => {
+      let s = w;
+      if (s.length > 4 && s.endsWith("s")) s = s.slice(0, -1);
+      if (s.length > 4 && s.endsWith("e")) s = s.slice(0, -1);
+      return s;
+    });
 }
 
-/** Evita accesorios o repuestos: el título tiene que compartir palabras clave. */
-function isRelevant(title: string, query: string): boolean {
+/**
+ * ¿La publicación es el mismo tipo de producto? Además de compartir palabras
+ * clave, el título tiene que *empezar* por algo que se buscó: así "Mochila …
+ * Camiseta" no pasa por "Camiseta", ni "Parrilla + Kit" por "Kit parrillero".
+ */
+export function isRelevant(title: string, query: string): boolean {
   const q = tokens(query);
   if (q.length === 0) return true;
-  const t = new Set(tokens(title));
-  const hits = q.filter((w) => t.has(w)).length;
-  return hits >= Math.max(1, Math.floor(q.length / 2));
+  const t = tokens(title);
+  if (t.length === 0) return false;
+  const titleWords = new Set(t);
+  const hits = q.filter((w) => titleWords.has(w)).length;
+  return hits >= Math.max(1, Math.floor(q.length / 2)) && q.includes(t[0]);
 }
 
 function pickBest(offers: (ProductOffer & { sellerKey: string })[]): ProductOffer[] {
@@ -151,11 +164,19 @@ async function viaSiteSearch(query: string, token: string): Promise<ProductOffer
 }
 
 // ---------- Estrategia 2: catálogo de productos ----------
+//
+// Medido en la cuenta real (sep-2026): muchos productos del catálogo no
+// tienen vendedores activos ("No winners found"), así que se consultan
+// varios productos relevantes (y variantes) en paralelo y se juntan ofertas.
+
+const CATALOG_PRODUCTS = 8;
+const CATALOG_IDS_MAX = 12;
 
 interface CatalogProduct {
   id: string;
   name: string;
   pictures?: { url: string }[];
+  children_ids?: string[];
 }
 
 interface CatalogItem {
@@ -163,7 +184,7 @@ interface CatalogItem {
   price: number;
   currency_id?: string;
   seller_id: number;
-  official_store_id?: number | null;
+  condition?: string;
   shipping?: { free_shipping?: boolean };
 }
 
@@ -181,57 +202,105 @@ function itemUrl(itemId: string): string {
   return `https://articulo.mercadolibre.com.ar/${itemId.replace(/^([A-Z]+)(\d+)$/, "$1-$2")}`;
 }
 
-async function viaCatalog(query: string, token: string): Promise<ProductOffer[]> {
+/**
+ * Precio razonable respecto de lo que estimó la IA: descarta accesorios o
+ * repuestos baratos y combos/packs muy caros que comparten nombre.
+ */
+export function withinPriceBand(price: number, referencePrice?: number): boolean {
+  if (!referencePrice || referencePrice <= 0) return true;
+  return price >= referencePrice * 0.35 && price <= referencePrice * 2.5;
+}
+
+async function itemsOf(productId: string, token: string): Promise<CatalogItem[]> {
+  try {
+    const data = await mlGet<{ results?: CatalogItem[] }>(`/products/${productId}/items?limit=5`, token);
+    return data.results ?? [];
+  } catch {
+    return []; // 404 "No winners found": producto sin vendedores activos
+  }
+}
+
+async function viaCatalog(
+  query: string,
+  token: string,
+  referencePrice?: number
+): Promise<ProductOffer[]> {
   const search = await mlGet<{ results?: CatalogProduct[] }>(
-    `/products/search?status=active&site_id=MLA&q=${encodeURIComponent(query)}&limit=5`,
+    `/products/search?status=active&site_id=MLA&q=${encodeURIComponent(query)}&limit=10`,
     token
   );
-  const product = (search.results ?? []).find((p) => isRelevant(p.name, query));
-  if (!product) return [];
+  const products = (search.results ?? [])
+    .filter((p) => isRelevant(p.name, query))
+    .slice(0, CATALOG_PRODUCTS);
+  if (products.length === 0) return [];
 
-  const items = await mlGet<{ results?: CatalogItem[] }>(
-    `/products/${product.id}/items?limit=10`,
-    token
-  );
-  const cheapest = (items.results ?? [])
-    .filter((i) => i.price > 0)
-    .sort((a, b) => a.price - b.price)
-    .slice(0, MAX_OFFERS * 2);
+  // Producto + hasta 2 variantes, heredando nombre e imagen del padre.
+  const targets = products
+    .flatMap((p) =>
+      [p.id, ...(p.children_ids ?? []).slice(0, 2)].map((id) => ({ id, product: p }))
+    )
+    .slice(0, CATALOG_IDS_MAX);
 
-  const names = await Promise.all(cheapest.map((i) => sellerName(i.seller_id, token)));
-  const image = toHttps(product.pictures?.[0]?.url);
-  return pickBest(
-    cheapest.map((i, index) => ({
-      sellerKey: String(i.seller_id),
-      store: names[index],
-      title: product.name,
-      price: i.price,
-      currency: i.currency_id ?? "ARS",
-      url: itemUrl(i.item_id),
-      imageUrl: image,
-      freeShipping: Boolean(i.shipping?.free_shipping),
-      available: true,
-    }))
+  const found = await Promise.all(
+    targets.map(async ({ id, product }) => ({ product, items: await itemsOf(id, token) }))
   );
+
+  const candidates = found.flatMap(({ product, items }) =>
+    items
+      .filter((i) => i.price > 0 && (i.condition ?? "new") === "new")
+      .filter((i) => withinPriceBand(i.price, referencePrice))
+      .map((i) => ({
+        sellerId: i.seller_id,
+        sellerKey: String(i.seller_id),
+        store: "",
+        title: product.name,
+        price: Math.round(i.price),
+        currency: i.currency_id ?? "ARS",
+        url: itemUrl(i.item_id),
+        imageUrl: toHttps(product.pictures?.[0]?.url),
+        freeShipping: Boolean(i.shipping?.free_shipping),
+        available: true,
+      }))
+  );
+
+  const best = pickBest(candidates);
+  // Nombres de vendedor solo para las ofertas que se muestran.
+  const names = await Promise.all(
+    best.map((offer) => {
+      const candidate = candidates.find((c) => c.url === offer.url);
+      return candidate ? sellerName(candidate.sellerId, token) : "Vendedor en Mercado Libre";
+    })
+  );
+  return best.map((offer, index) => ({ ...offer, store: names[index] }));
 }
 
 export type MercadoLibreStrategy = "site-search" | "catalog";
 
+/** Si la búsqueda de publicaciones está bloqueada para la app, no insistir. */
+let siteSearchBlockedUntil = 0;
+
 /**
  * Mejores ofertas reales para un producto. Prueba la búsqueda y, si ML la
  * bloquea (401/403), el catálogo. Lanza error solo si fallan ambas.
+ * `referencePrice` (estimación de la IA) filtra ofertas de otro rango.
  */
 export async function findOffers(
-  query: string
+  query: string,
+  referencePrice?: number
 ): Promise<{ offers: ProductOffer[]; strategy: MercadoLibreStrategy }> {
   const token = await getAccessToken();
-  try {
-    const offers = await viaSiteSearch(query, token);
-    if (offers.length > 0) return { offers, strategy: "site-search" };
-  } catch (error) {
-    if (!(error instanceof MercadoLibreError) || ![401, 403].includes(error.status)) {
-      throw error;
+  if (Date.now() >= siteSearchBlockedUntil) {
+    try {
+      const offers = (await viaSiteSearch(query, token)).filter((o) =>
+        withinPriceBand(o.price, referencePrice)
+      );
+      if (offers.length > 0) return { offers, strategy: "site-search" };
+    } catch (error) {
+      if (!(error instanceof MercadoLibreError) || ![401, 403].includes(error.status)) {
+        throw error;
+      }
+      siteSearchBlockedUntil = Date.now() + 60 * 60 * 1000;
     }
   }
-  return { offers: await viaCatalog(query, token), strategy: "catalog" };
+  return { offers: await viaCatalog(query, token, referencePrice), strategy: "catalog" };
 }

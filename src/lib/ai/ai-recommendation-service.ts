@@ -130,6 +130,31 @@ function mapRawToCandidate(raw: Record<string, unknown>): GiftCandidate {
   };
 }
 
+export interface GenerateOptions {
+  /** Nombres ya propuestos en esta búsqueda: no repetirlos ("más ideas"). */
+  exclude?: string[];
+}
+
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Saca candidatos repetidos (mismo nombre normalizado) o ya propuestos. */
+export function withoutExcluded(candidates: GiftCandidate[], exclude: string[] = []): GiftCandidate[] {
+  const seen = new Set(exclude.map(normalizeName));
+  return candidates.filter((c) => {
+    const key = normalizeName(c.name);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export class AIRecommendationService {
   /**
    * Genera candidatos de regalo. Si OpenAI está configurado usa structured
@@ -138,38 +163,52 @@ export class AIRecommendationService {
    * Devuelve también `source` para el badge de desarrollo (punto 2).
    */
   static async generateGiftRecommendations(
-    input: GiftSessionInput
+    input: GiftSessionInput,
+    options: GenerateOptions = {}
   ): Promise<{ candidates: GiftCandidate[]; source: AISource; fallbackReason?: string }> {
+    const exclude = options.exclude ?? [];
+    const mock = () => withoutExcluded(buildMockCandidates(input, exclude), exclude);
     if (!env.hasOpenAIKey) {
-      console.warn('[AIRecommendationService] sin OPENAI_API_KEY, usando mock');
-      return { candidates: buildMockCandidates(input), source: "mock", fallbackReason: "sin OPENAI_API_KEY" };
+      if (process.env.NODE_ENV !== "test") {
+        console.warn("[AIRecommendationService] sin OPENAI_API_KEY, usando mock");
+      }
+      return { candidates: mock(), source: "mock", fallbackReason: "sin OPENAI_API_KEY" };
     }
 
     try {
-      const candidates = await this.fromOpenAI(input);
+      const candidates = withoutExcluded(await this.fromOpenAI(input, exclude), exclude);
       if (candidates.length >= 3) return { candidates, source: "openai" };
-      return { candidates: buildMockCandidates(input), source: "mock", fallbackReason: "OpenAI devolvió <3 candidatos" };
+      return { candidates: mock(), source: "mock", fallbackReason: "OpenAI devolvió <3 candidatos nuevos" };
     } catch (error) {
-      console.error("[AIRecommendationService] OpenAI falló, usando mock:", error);
-      return { candidates: buildMockCandidates(input), source: "mock", fallbackReason: String(error) };
+      // Una línea con la causa (ej. "429 credit_balance_exhausted"), sin stack.
+      const reason =
+        error instanceof OpenAI.APIError
+          ? `${error.status} ${error.code ?? error.type ?? ""} ${error.message}`.trim()
+          : String(error);
+      console.error(`[AIRecommendationService] OpenAI falló, usando ideas de ejemplo: ${reason}`);
+      return { candidates: mock(), source: "mock", fallbackReason: String(error) };
     }
   }
 
   private static async fromOpenAI(
-    input: GiftSessionInput
+    input: GiftSessionInput,
+    exclude: string[] = []
   ): Promise<GiftCandidate[]> {
     const client = new OpenAI({ apiKey: env.openAIKey });
 
     const completion = await client.chat.completions.create(
       {
         model: AI_MODEL,
-        temperature: 0.4,
+        // Un poco más de variedad cuando se piden ideas nuevas.
+        temperature: exclude.length > 0 ? 0.8 : 0.4,
         messages: [
           { role: "system", content: buildSystemPrompt(input) },
           {
             role: "user",
             content:
-              "Generá las recomendaciones de regalo siguiendo estrictamente el esquema pedido.",
+              exclude.length > 0
+                ? `Ya propusiste estas ideas y no convencieron: ${exclude.join("; ")}. Generá recomendaciones NUEVAS y distintas (otro tipo de objeto, otro ángulo o una experiencia), respetando las mismas reglas y el esquema pedido. No repitas ni hagas variantes de las anteriores.`
+                : "Generá las recomendaciones de regalo siguiendo estrictamente el esquema pedido.",
           },
         ],
         response_format: {

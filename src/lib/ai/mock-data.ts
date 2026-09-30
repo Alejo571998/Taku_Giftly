@@ -593,13 +593,32 @@ function honestReason(
   return `Va directo a su gusto por ${likes}${occasion ? ` y es un buen regalo para ${occasion.toLowerCase()}` : ""}. ${option.description}`;
 }
 
-export function buildMockCandidates(input: GiftSessionInput): GiftCandidate[] {
-  const template = pickTemplate(input);
+export function buildMockCandidates(
+  input: GiftSessionInput,
+  exclude: string[] = []
+): GiftCandidate[] {
+  const excluded = new Set(exclude.map((n) => n.toLowerCase()));
+  const primary = pickTemplate(input);
+  // "Más ideas": si la plantilla elegida ya se usó, se sigue con la genérica.
+  const unused = primary.options.filter((o) => !excluded.has(o.name.toLowerCase()));
+  const template: MockTemplate =
+    unused.length >= 3
+      ? { ...primary, options: unused }
+      : {
+          ...GENERIC_TEMPLATE,
+          options: [...unused, ...GENERIC_TEMPLATE.options].filter(
+            (o, i, all) =>
+              !excluded.has(o.name.toLowerCase()) &&
+              all.findIndex((x) => x.name === o.name) === i
+          ),
+        };
   const hints = input.recentHints ?? "";
   const isGeneric = template.id === "generico";
 
   return template.options.map((option, index) => {
-    const matchesHint = hintMatches(hints, option.keywords, option.name);
+    // Una idea genérica ("Accesorio para su hobby") no puede responder a una
+    // pista concreta aunque comparta alguna palabra.
+    const matchesHint = !isGeneric && hintMatches(hints, option.keywords, option.name);
     // Si el template es genérico (ninguno calzó, bestScore < 1), aplicar bandas de precio §8
     const estimatedPrice = isGeneric
       ? priceForBands(option.estimatedPrice, input.budgetMin, input.budgetMax, index, template.options.length)

@@ -48,6 +48,8 @@ export interface DataStore {
   setGroupWinner(groupId: string, winnerOptionId: string): Promise<Group>;
   listUserSessions(userId: string): Promise<UserSessionSummary[]>;
   getGroupBySession(sessionId: string): Promise<Group | null>;
+  /** Suma opciones nuevas a una búsqueda existente ("más ideas"). */
+  addOptions(sessionId: string, options: GiftOption[]): Promise<GiftOption[]>;
   /** Guarda precios/ofertas recién consultados de una opción. */
   updateOptionPrices(optionId: string, product: ProductInfo): Promise<GiftOption>;
   /**

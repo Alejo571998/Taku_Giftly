@@ -116,3 +116,68 @@ describe("ProductSearchService", () => {
     expect(info).toMatchObject({ isEstimated: true, offers: [], price: 154_000, pricesUpdatedAt: null });
   });
 });
+
+describe("catálogo: varios productos y filtro de precio", () => {
+  beforeEach(() => {
+    process.env.ML_CLIENT_ID = "id";
+    process.env.ML_CLIENT_SECRET = "secret";
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    process.env.ML_CLIENT_ID = "";
+    process.env.ML_CLIENT_SECRET = "";
+  });
+
+  it("salta productos sin vendedores y descarta precios fuera de rango", async () => {
+    mockFetch((url) => {
+      if (url.includes("/sites/MLA/search")) return { status: 403, body: {} };
+      if (url.includes("/products/search")) {
+        return {
+          status: 200,
+          body: {
+            results: [
+              { id: "P1", name: "Termo Stanley Classic 1L" },
+              { id: "P2", name: "Termo Stanley Quencher", children_ids: ["P2A"] },
+            ],
+          },
+        };
+      }
+      if (url.includes("/products/P1/items")) return { status: 404, body: { message: "No winners found" } };
+      if (url.includes("/products/P2/items")) return { status: 404, body: { message: "No winners found" } };
+      if (url.includes("/products/P2A/items")) {
+        return {
+          status: 200,
+          body: {
+            results: [
+              { item_id: "MLA1", price: 5000, seller_id: 1 }, // repuesto: muy barato
+              { item_id: "MLA2", price: 120000, seller_id: 2 },
+              { item_id: "MLA3", price: 900000, seller_id: 3 }, // pack: muy caro
+              { item_id: "MLA4", price: 110000, seller_id: 4, condition: "used" },
+            ],
+          },
+        };
+      }
+      if (url.includes("/users/")) return { status: 200, body: { nickname: "VENDEDOR" } };
+      return undefined;
+    });
+    const { findOffers } = await loadModule();
+    const { offers } = await findOffers("Termo Stanley", 130_000);
+    expect(offers.map((o) => o.price)).toEqual([120000]);
+    expect(offers[0].title).toBe("Termo Stanley Quencher");
+  });
+});
+
+describe("isRelevant", () => {
+  it.each([
+    ["Kit Parrillero Herramientas Parrilla Asador", "Kit parrillero profesional", true],
+    ["Parrilla 60x50 + Kit Parrillero", "Kit parrillero profesional", false],
+    ["Mochila Footy Camiseta Futbol Carro", "Camiseta de fútbol personalizada", false],
+    ["Camiseta Selección Argentina Fútbol", "Camiseta de fútbol personalizada", true],
+    ["Auriculares Gamer Inalámbricos Corsair", "Auriculares gamer inalámbricos", true],
+    ["Funda para auriculares", "Auriculares gamer inalámbricos", false],
+    ["Set Cuchillos Cocina Chef", "Set de cuchillos de chef", true],
+  ])("%s ← %s → %s", async (title, query, expected) => {
+    const { isRelevant } = await import("@/lib/products/mercadolibre");
+    expect(isRelevant(title, query)).toBe(expected);
+  });
+});

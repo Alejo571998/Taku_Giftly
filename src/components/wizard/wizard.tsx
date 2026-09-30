@@ -37,7 +37,7 @@ import {
   recipientPhrase,
 } from "@/lib/catalog";
 import { TAKU_WIZARD_TIPS } from "@/lib/taku/lines";
-import type { GiftSessionInput } from "@/lib/types";
+import type { GiftSession, GiftSessionInput } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const RELATIONSHIP_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -112,9 +112,31 @@ interface WizardState {
 
 interface WizardProps {
   initialRelationship?: string;
+  /** Búsqueda anterior cuyas respuestas se precargan ("Ajustar respuestas"). */
+  fromSessionId?: string;
 }
 
-export function Wizard({ initialRelationship }: WizardProps) {
+/** Estado del wizard a partir de una búsqueda guardada. */
+function stateFromSession(session: GiftSession): WizardState {
+  const preset = BUDGET_PRESETS.some(
+    (p) => p.min === (session.budgetMin ?? 0) && p.max === session.budgetMax
+  );
+  return {
+    recipientName: session.recipientName ?? "",
+    recipientRelationship: session.recipientRelationship ?? "",
+    occasion: session.occasion ?? "",
+    occasionDate: session.occasionDate ?? "",
+    ageRange: session.ageRange ?? "",
+    budgetMin: session.budgetMin,
+    budgetMax: session.budgetMax,
+    customBudget: !preset,
+    interests: session.interests,
+    recentHints: session.recentHints ?? "",
+    thingsToAvoid: session.thingsToAvoid ?? "",
+  };
+}
+
+export function Wizard({ initialRelationship, fromSessionId }: WizardProps) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -139,8 +161,38 @@ export function Wizard({ initialRelationship }: WizardProps) {
 
   const who = recipientPhrase(state.recipientRelationship, state.recipientName);
 
+  const [prefilled, setPrefilled] = useState(false);
+  const skipNextTip = useRef(false);
+
+  // Precarga de una búsqueda anterior: se arranca por los gustos y pistas,
+  // que es lo que más se suele ajustar (se puede volver atrás a lo demás).
+  useEffect(() => {
+    if (!fromSessionId) return;
+    let cancelled = false;
+    apiRequest<{ session: GiftSession }>(`/api/sessions/${fromSessionId}`)
+      .then(({ session }) => {
+        if (cancelled) return;
+        setState(stateFromSession(session));
+        setPrefilled(true);
+        skipNextTip.current = true;
+        setStep(4);
+        say({
+          text: "Cargué tus respuestas anteriores. Cambiá lo que quieras y te busco otras ideas.",
+          mood: "happy",
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [fromSessionId, say]);
+
   // Taku acompaña cada paso con un consejo corto.
   useEffect(() => {
+    if (skipNextTip.current) {
+      skipNextTip.current = false;
+      return;
+    }
     say(TAKU_WIZARD_TIPS[step]);
   }, [step, say]);
 
@@ -261,6 +313,12 @@ export function Wizard({ initialRelationship }: WizardProps) {
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-10">
       {submitting && <TakuLoader recipient={who} />}
+      {prefilled && (
+        <p className="mb-6 flex items-center gap-2 rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent-ink" role="status">
+          <Sparkles className="size-4 shrink-0" aria-hidden="true" />
+          Tus respuestas anteriores están cargadas. Podés volver a cualquier paso con “Atrás”.
+        </p>
+      )}
       <div className="mb-8">
         <p className="text-sm font-semibold text-primary-ink">
           Paso {step + 1} de {TOTAL_STEPS}

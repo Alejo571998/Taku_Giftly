@@ -49,7 +49,7 @@ export function PriceComparison({
   const offers = offersOf(option);
   const updatedAt = option.pricesUpdatedAt ?? (offers.length > 0 ? option.createdAt : null);
   const stale = !updatedAt || openedAt - Date.parse(updatedAt) > STALE_MS;
-  const canSearch = option.giftType === "physical" || option.giftType === "giftcard";
+  const canSearch = option.giftType === "physical";
 
   async function refresh() {
     setRefreshing(true);

@@ -65,10 +65,11 @@ export class ProductSearchService {
    * devuelve un precio estimado con isEstimated=true y sin ofertas.
    */
   static async search(input: ProductSearchInput): Promise<ProductInfo> {
-    const physical = input.giftType === "physical" || input.giftType === "giftcard";
-    if (env.hasMercadolibre && physical) {
+    // Solo objetos físicos: una gift card o una experiencia no tiene "el mismo
+    // producto" en una tienda (se ofrecen links de búsqueda en su lugar).
+    if (env.hasMercadolibre && input.giftType === "physical") {
       try {
-        const { offers, strategy } = await findOffers(input.query);
+        const { offers, strategy } = await findOffers(input.query, input.hintPrice);
         if (offers.length > 0) {
           const best = offers[0];
           return {

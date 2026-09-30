@@ -1,8 +1,5 @@
 import type { NextRequest } from "next/server";
-import type { GiftOption } from "@/lib/types";
-import { AIRecommendationService } from "@/lib/ai/ai-recommendation-service";
-import { ProductSearchService } from "@/lib/products/product-search-service";
-import { computeCompatibilityScore, computeBudgetFit } from "@/lib/scoring/compatibility-score";
+import { buildGiftOptions } from "@/lib/recommendations/build-gift-options";
 import { getDataStore } from "@/lib/data";
 import { resolveUserId, jsonError } from "@/lib/server-auth";
 import { LIMITS, checkRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
@@ -33,58 +30,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { candidates, source } =
-      await AIRecommendationService.generateGiftRecommendations(input);
-
-    const enriched = await Promise.all(
-      candidates.map(async (candidate): Promise<GiftOption> => {
-        const product = await ProductSearchService.search({
-          query: candidate.name,
-          category: candidate.category,
-          giftType: candidate.giftType,
-          budgetMin: input.budgetMin,
-          budgetMax: input.budgetMax,
-          hintPrice: candidate.estimatedPrice,
-        });
-
-        const priceForScoring = product.isEstimated
-          ? candidate.estimatedPrice
-          : product.price;
-
-        const scoreInput = {
-          ...candidate,
-          estimatedPrice: priceForScoring,
-          budgetFit: computeBudgetFit(priceForScoring, input.budgetMin, input.budgetMax),
-        };
-        const breakdown = computeCompatibilityScore(scoreInput, input);
-
-        return {
-          id: "",
-          giftSessionId: "",
-          name: candidate.name,
-          category: candidate.category,
-          description: candidate.description,
-          whyItFits: candidate.whyItFits,
-          compatibilityScore: breakdown.total,
-          estimatedPrice: product.price,
-          currency: product.currency,
-          imageUrl: product.imageUrl,
-          isPriceEstimated: product.isEstimated,
-          productUrl: product.productUrl,
-          storeName: product.storeName,
-          pros: candidate.pros,
-          cons: candidate.cons,
-          giftType: candidate.giftType,
-          offers: product.offers,
-          pricesUpdatedAt: product.pricesUpdatedAt,
-          createdAt: "",
-        };
-      })
-    );
-
-    enriched.sort(
-      (a, b) => b.compatibilityScore - a.compatibilityScore
-    );
+    const { options: enriched, source } = await buildGiftOptions(input);
 
     const { session, options } = await getDataStore().createSessionWithOptions(
       input,

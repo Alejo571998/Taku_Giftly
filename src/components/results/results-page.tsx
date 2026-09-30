@@ -3,13 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowRight, RefreshCw, SlidersHorizontal, Users } from "lucide-react";
+import { ArrowRight, RefreshCw, SlidersHorizontal, Sparkles, Users } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CompatibilityBadge } from "@/components/compatibility-badge";
 import { GiftImage } from "@/components/gift-image";
 import { PriceTag } from "@/components/price-tag";
 import { CreateGroupDialog } from "@/components/results/create-group-dialog";
 import { TakuImage } from "@/components/taku/taku-image";
+import { TakuLoader } from "@/components/taku/taku-loader";
 import { TakuSpot } from "@/components/taku/taku-spot";
 import { useTaku } from "@/components/taku/taku-provider";
 import { apiRequest } from "@/lib/client-auth";
@@ -50,7 +52,7 @@ function useSessionData(sessionId: string | null, reloadKey: number) {
     };
   }, [sessionId, reloadKey]);
 
-  return { data, error, loading };
+  return { data, error, loading, setData };
 }
 
 export function ResultsPage() {
@@ -58,8 +60,40 @@ export function ResultsPage() {
   const sessionId = searchParams.get("session");
   const [reloadKey, setReloadKey] = useState(0);
   const [groupOpen, setGroupOpen] = useState(false);
-  const { data, error, loading } = useSessionData(sessionId, reloadKey);
-  const { sayOnce } = useTaku();
+  const { data, error, loading, setData } = useSessionData(sessionId, reloadKey);
+  const { say, sayOnce } = useTaku();
+  const [moreLoading, setMoreLoading] = useState(false);
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+
+  /** "Mostrame otras ideas": nuevas ideas sin repetir, sumadas a las actuales. */
+  async function handleMoreIdeas() {
+    if (!data) return;
+    setMoreLoading(true);
+    try {
+      const result = await apiRequest<{ options: GiftOption[]; newIds: string[] }>(
+        `/api/sessions/${data.session.id}/more`,
+        { method: "POST" }
+      );
+      const merged = [...data.options, ...result.options].sort(
+        (a, b) => b.compatibilityScore - a.compatibilityScore
+      );
+      setData({ ...data, options: merged });
+      setNewIds(new Set(result.newIds));
+      say({
+        text: `¡Te traje ${result.options.length} ideas nuevas! Las marqué con “Nueva”.`,
+        mood: "celebrate",
+      });
+      if (data.group) toast.success("Las ideas nuevas también se sumaron a la votación.");
+      requestAnimationFrame(() =>
+        document.getElementById("ideas")?.scrollIntoView({ behavior: "smooth", block: "start" })
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "No pude traer más ideas.";
+      say({ text: message, mood: "sad" });
+    } finally {
+      setMoreLoading(false);
+    }
+  }
 
   const who = data ? recipientPhrase(data.session.recipientRelationship, data.session.recipientName) : "";
   const count = data?.options.length ?? 0;
@@ -175,7 +209,10 @@ export function ResultsPage() {
               <TakuImage size={24} className="size-6 animate-none!" />
               La favorita de Taku
             </span>
-            <CompatibilityBadge score={top.compatibilityScore} showLabel />
+            <span className="flex items-center gap-1.5">
+              {newIds.has(top.id) && <NewBadge />}
+              <CompatibilityBadge score={top.compatibilityScore} showLabel />
+            </span>
           </div>
           <h2 className="font-heading text-3xl leading-tight">{top.name}</h2>
           <p className="text-pretty text-foreground/80">{top.whyItFits}</p>
@@ -198,7 +235,7 @@ export function ResultsPage() {
 
       {rest.length > 0 && (
         <>
-          <h2 className="mt-10 font-heading text-2xl">Otras buenas ideas</h2>
+          <h2 id="ideas" className="mt-10 scroll-mt-24 font-heading text-2xl">Otras buenas ideas</h2>
           <ol className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {rest.map((option) => (
               <li key={option.id} className="flex">
@@ -214,7 +251,10 @@ export function ResultsPage() {
                   />
                   <div className="flex flex-1 flex-col gap-2 p-4">
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-heading text-xl leading-snug">{option.name}</h3>
+                      <h3 className="font-heading text-xl leading-snug">
+                        {newIds.has(option.id) && <NewBadge className="mr-1.5 align-middle" />}
+                        {option.name}
+                      </h3>
                       <CompatibilityBadge score={option.compatibilityScore} className="shrink-0" />
                     </div>
                     <p className="line-clamp-3 text-sm text-muted-foreground">{option.whyItFits}</p>
@@ -231,6 +271,40 @@ export function ResultsPage() {
             ))}
           </ol>
         </>
+      )}
+
+      {/* ¿Ninguna convence? Más ideas sin empezar de cero */}
+      {moreLoading && <TakuLoader recipient={who} />}
+      {group?.status !== "finished" && (
+        <section className="mt-10 flex flex-col items-start gap-4 rounded-3xl border border-dashed border-border p-6 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <h2 className="font-heading text-2xl">¿Ninguna te convence?</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Pedile a Taku ideas distintas con las mismas respuestas, o cambiá lo que quieras.
+            </p>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            {options.length < 15 && (
+              <Button
+                variant="outline"
+                onClick={handleMoreIdeas}
+                disabled={moreLoading}
+                className="h-11 rounded-full px-5 font-semibold"
+              >
+                <Sparkles className="size-4 text-primary-ink" aria-hidden="true" />
+                Mostrame otras ideas
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              className="h-11 rounded-full px-5"
+              render={<Link href={`/regalo?desde=${session.id}`} />}
+            >
+              <SlidersHorizontal className="size-4" aria-hidden="true" />
+              Ajustar respuestas
+            </Button>
+          </div>
+        </section>
       )}
 
       {/* Siguiente paso: decidir en grupo */}
@@ -259,14 +333,6 @@ export function ResultsPage() {
         )}
       </section>
 
-      <p className="mt-6 text-center text-sm text-muted-foreground">
-        ¿Ninguna te convence?{" "}
-        <Link href="/regalo" className="inline-flex items-center gap-1 font-medium text-primary-ink underline-offset-2 hover:underline">
-          <SlidersHorizontal className="size-3.5" aria-hidden="true" />
-          Probá con otras respuestas
-        </Link>
-      </p>
-
       <CreateGroupDialog
         sessionId={session.id}
         suggestedName={`Regalo para ${who}`}
@@ -274,5 +340,15 @@ export function ResultsPage() {
         onOpenChange={setGroupOpen}
       />
     </div>
+  );
+}
+
+function NewBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={`inline-flex rounded-full bg-gold/30 px-2 py-0.5 font-sans text-xs font-bold text-gold-ink ${className ?? ""}`}
+    >
+      Nueva
+    </span>
   );
 }

@@ -603,6 +603,16 @@ export class SupabaseDataStore implements DataStore {
     }));
   }
 
+  async addOptions(sessionId: string, options: GiftOption[]): Promise<GiftOption[]> {
+    const client = throwIfNoClient();
+    const { data, error } = await client
+      .from("gift_options")
+      .insert(options.map((o) => toOptionRow(o, sessionId)))
+      .select("*");
+    if (error) throw new Error(`No se pudieron guardar las ideas: ${error.message}`);
+    return (data ?? []).map((r) => mapOption(r as OptionRow));
+  }
+
   async updateOptionPrices(optionId: string, product: ProductInfo): Promise<GiftOption> {
     const client = throwIfNoClient();
     const { data, error } = await client
