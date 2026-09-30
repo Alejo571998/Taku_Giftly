@@ -27,6 +27,13 @@ real o del mock.
 | `ML_CLIENT_ID`, `ML_CLIENT_SECRET` | Precio, foto y link reales | Precio estimado (siempre etiquetado) |
 | `NEXT_PUBLIC_APP_URL` | URL pública (metadata) | `http://localhost:3000` |
 
+## Verificar un deploy
+
+Abrí `https://tu-app.vercel.app/api/health`. Muestra qué integraciones están
+activas (solo sí/no, nunca las keys) y, en `problems`, qué variable falta o
+está mal. En producción tiene que decir `"ok": true` y `"dataMode": "supabase"`.
+Si falta Supabase, las APIs responden 503 con un mensaje de mantenimiento.
+
 ## Migrar Supabase a otra cuenta
 
 El plan gratuito de Supabase permite 2 proyectos activos por cuenta y pausa
