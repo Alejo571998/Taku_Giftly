@@ -628,7 +628,7 @@ const ESTILO_TEMPLATE: MockTemplate = {
         "Un libro bien elegido dice 'te conozco'. Con tu ayuda armamos una selección corta de títulos según sus lecturas y género preferido.",
       tags: ["libros", "arte"],
       estimatedPrice: 45000,
-      giftType: "physical",
+      giftType: "service",
       pros: [
         "Altamente personal con la dedicatoria",
         "Regalo íntimo y con contenido real",
