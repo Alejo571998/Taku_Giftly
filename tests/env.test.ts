@@ -10,6 +10,7 @@ describe("normalizeUrl", () => {
     ["localhost:3000", "http://localhost:3000"],
     ["", null],
     ["https://", null],
+    ["NEXT_PUBLIC_SUPABASE_ANON_KEY", null],
   ])("%s → %s", (raw, expected) => {
     expect(normalizeUrl(raw)).toBe(expected);
   });
@@ -28,6 +29,13 @@ describe("env.siteUrl", () => {
 
   it("en Vercel con la variable en localhost usa la URL de producción", () => {
     process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
+    process.env.VERCEL = "1";
+    process.env.VERCEL_PROJECT_PRODUCTION_URL = "taku-giftly.vercel.app";
+    expect(env.siteUrl).toBe("https://taku-giftly.vercel.app");
+  });
+
+  it("con un valor que no es dominio usa la URL de Vercel", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "NEXT_PUBLIC_SUPABASE_ANON_KEY";
     process.env.VERCEL = "1";
     process.env.VERCEL_PROJECT_PRODUCTION_URL = "taku-giftly.vercel.app";
     expect(env.siteUrl).toBe("https://taku-giftly.vercel.app");

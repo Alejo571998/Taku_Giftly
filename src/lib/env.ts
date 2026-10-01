@@ -87,7 +87,11 @@ export function normalizeUrl(raw: string | undefined | null): string | null {
     value = `${/^(localhost|127\.0\.0\.1)(:|$)/.test(value) ? "http" : "https"}://${value}`;
   }
   try {
-    return new URL(value).origin;
+    const url = new URL(value);
+    // Un dominio real tiene punto ("taku.vercel.app"); si no, es un error de
+    // carga (ej. pegar el nombre de otra variable). localhost es la excepción.
+    if (!url.hostname.includes(".") && url.hostname !== "localhost") return null;
+    return url.origin;
   } catch {
     return null;
   }
