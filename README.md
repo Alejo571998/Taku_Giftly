@@ -23,7 +23,7 @@ real o del mock.
 | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Base real, identidad anónima, votación en vivo | Modo local (JSON) |
 | `NEXT_PUBLIC_GIFTLY_DATA_MODE=local` | Forzar modo local aunque haya keys (ej: Supabase pausado) | — |
-| `OPENAI_API_KEY` | Recomendaciones con IA | Ideas de ejemplo |
+| `GROQ_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY` | Recomendaciones con IA (se prueban en ese orden) | Modo demo: ideas de ejemplo, avisado al usuario |
 | `ML_CLIENT_ID`, `ML_CLIENT_SECRET` | Precio, foto y link reales | Precio estimado (siempre etiquetado) |
 | `NEXT_PUBLIC_APP_URL` | URL pública (metadata) | `http://localhost:3000` |
 
@@ -63,6 +63,25 @@ temporalmente otro para liberar el cupo), exportá con
 y cargalo en el nuevo con `psql <conexión-nueva> -f giftly-data.sql` después del
 paso 3. Los usuarios anónimos no migran: cada navegador obtiene una identidad
 nueva, así que "Mis regalos" arranca vacío.
+
+## IA gratuita (y modo demo)
+
+Giftly prueba los proveedores en orden y usa el primero que responde:
+
+1. **Groq** (gratis, sin tarjeta): modelo `openai/gpt-oss-120b`, 30 pedidos por
+   minuto y 1.000 por día. Key en <https://console.groq.com/keys>.
+2. **Google Gemini** (gratis, sin tarjeta): modelo `gemini-3.5-flash`. Key en
+   <https://aistudio.google.com/apikey>. En el plan gratuito Google puede usar
+   los textos para mejorar sus productos.
+3. **OpenAI** (pago).
+
+Si uno falla por falta de crédito, key inválida o límite, se saltea unos minutos
+y se usa el siguiente. Si ninguno responde, la app entra en **modo demo**:
+ideas de ejemplo armadas con las respuestas, con un aviso visible ("Versión
+demo") en los resultados. Los precios de Mercado Libre son reales en ambos casos.
+
+`/api/health` muestra qué proveedores hay (`ai`) y `/api/health?deep=1` los prueba.
+Orden y modelos se pueden cambiar con `AI_PROVIDER_ORDER`, `GROQ_MODEL` y `GEMINI_MODEL`.
 
 ## Precios reales con Mercado Libre
 

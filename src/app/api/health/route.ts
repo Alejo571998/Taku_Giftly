@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { env } from "@/lib/env";
+import { configuredProviders, isAvailable, pingProvider } from "@/lib/ai/providers";
 import { diagnoseMercadoLibre } from "@/lib/products/mercadolibre";
 import { checkRateLimit, clientIp } from "@/lib/rate-limit";
 
@@ -23,7 +24,10 @@ export async function GET(req: NextRequest) {
             .join(", ")}.`
     );
   }
-  if (!env.hasOpenAIKey) problems.push("Falta OPENAI_API_KEY: se usan ideas de ejemplo.");
+  const providers = configuredProviders();
+  if (providers.length === 0) {
+    problems.push("No hay IA configurada (GROQ_API_KEY, GEMINI_API_KEY u OPENAI_API_KEY): modo demo.");
+  }
   if (onVercel && /localhost/.test(env.appUrl)) {
     problems.push(
       `NEXT_PUBLIC_APP_URL apunta a localhost: se usa ${env.siteUrl} (conviene corregirla en Vercel).`
@@ -31,11 +35,21 @@ export async function GET(req: NextRequest) {
   }
   if (!env.hasMercadolibre) problems.push("Faltan ML_CLIENT_ID/ML_CLIENT_SECRET: precios estimados.");
 
-  // ?deep=1 prueba Mercado Libre desde este servidor (limitado por IP).
+  // ?deep=1 prueba IA y Mercado Libre desde este servidor (limitado por IP).
   let mercadolibreCheck: Record<string, string | number> | undefined;
-  if (req.nextUrl.searchParams.get("deep") === "1" && env.hasMercadolibre) {
+  let aiCheck: Record<string, string> | undefined;
+  if (req.nextUrl.searchParams.get("deep") === "1") {
     const rl = checkRateLimit(`health-deep:${clientIp(req)}`, 5, 10 * 60 * 1000);
-    mercadolibreCheck = rl.ok ? await diagnoseMercadoLibre() : { skipped: "rate limit" };
+    if (!rl.ok) {
+      aiCheck = { skipped: "rate limit" };
+    } else {
+      const [ml, pings] = await Promise.all([
+        env.hasMercadolibre ? diagnoseMercadoLibre() : Promise.resolve(undefined),
+        Promise.all(providers.map(async (p) => [p.id, await pingProvider(p)] as const)),
+      ]);
+      mercadolibreCheck = ml;
+      aiCheck = Object.fromEntries(pings);
+    }
   }
 
   return Response.json(
@@ -45,9 +59,12 @@ export async function GET(req: NextRequest) {
       dataMode: env.hasSupabase ? "supabase" : "local",
       siteUrl: env.siteUrl,
       supabaseProject: env.supabaseUrl ? new URL(env.supabaseUrl).hostname.split(".")[0].slice(0, 4) + "…" : null,
-      openai: env.hasOpenAIKey,
+      // Orden en que se prueban; "en pausa" = falló hace poco (sin crédito/límite).
+      ai: providers.map((p) => (isAvailable(p.id) ? p.id : `${p.id} (en pausa)`)),
+      demoMode: providers.length === 0,
       mercadolibre: env.hasMercadolibre,
       problems,
+      ...(aiCheck ? { aiCheck } : {}),
       ...(mercadolibreCheck ? { mercadolibreCheck } : {}),
     },
     { headers: { "Cache-Control": "no-store" } }

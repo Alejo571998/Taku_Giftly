@@ -33,6 +33,16 @@ export const env = {
   get hasOpenAIKey() {
     return Boolean(this.openAIKey);
   },
+  get groqKey() {
+    return process.env.GROQ_API_KEY ?? "";
+  },
+  get geminiKey() {
+    return process.env.GEMINI_API_KEY ?? "";
+  },
+  /** Hay al menos un proveedor de IA configurado. */
+  get hasAI() {
+    return Boolean(this.openAIKey || this.groqKey || this.geminiKey);
+  },
   get mercadolibreClientId() {
     return process.env.ML_CLIENT_ID ?? "";
   },

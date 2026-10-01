@@ -185,9 +185,20 @@ export function ResultsPage() {
             .filter(Boolean)
             .join(" · ")}
         </p>
-        {showSourceBadge && (
+        {session.aiSource === "mock" && (
+          // Modo demo: se dice claramente que las ideas no son de la IA.
+          <p className="mt-3 flex max-w-2xl items-start gap-2 rounded-2xl bg-gold/20 px-4 py-3 text-sm text-gold-ink">
+            <Sparkles className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>
+              <strong className="font-semibold">Versión demo:</strong> estas ideas
+              son ejemplos que Taku armó con tus respuestas, todavía sin IA. Los
+              precios de Mercado Libre sí son reales.
+            </span>
+          </p>
+        )}
+        {showSourceBadge && session.aiSource && session.aiSource !== "mock" && (
           <p className="mt-2 inline-flex rounded-full border border-dashed border-border bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground">
-            {session.aiSource === "openai" ? "IA real (OpenAI)" : "Ideas de ejemplo (mock)"} · solo visible en desarrollo
+            IA: {session.aiSource} · solo visible en desarrollo
           </p>
         )}
       </div>

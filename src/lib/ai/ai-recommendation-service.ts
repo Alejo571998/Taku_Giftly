@@ -1,9 +1,13 @@
 import OpenAI from "openai";
-import type { GiftCandidate, GiftSessionInput } from "@/lib/types";
-import { env } from "@/lib/env";
+import type { AISource, GiftCandidate, GiftSessionInput } from "@/lib/types";
+import {
+  configuredProviders,
+  isAvailable,
+  markFailure,
+  type AIProvider,
+} from "@/lib/ai/providers";
 import { buildMockCandidates } from "@/lib/ai/mock-data";
 
-const AI_MODEL = "gpt-4o-mini";
 
 const RECOMMENDATION_SCHEMA = {
   type: "object",
@@ -75,7 +79,7 @@ const RECOMMENDATION_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export type AISource = "openai" | "mock";
+export type { AISource } from "@/lib/types";
 
 function buildSystemPrompt(input: GiftSessionInput): string {
   const budget =
@@ -157,10 +161,9 @@ export function withoutExcluded(candidates: GiftCandidate[], exclude: string[] =
 
 export class AIRecommendationService {
   /**
-   * Genera candidatos de regalo. Si OpenAI está configurado usa structured
-   * outputs (JSON Schema estricto vía response_format); ante cualquier fallo
-   * (sin key, error de red, timeout) hace fallback automático a los mocks.
-   * Devuelve también `source` para el badge de desarrollo (punto 2).
+   * Genera candidatos de regalo probando los proveedores de IA en orden
+   * (Groq → Gemini → OpenAI, configurable). Si ninguno responde, usa ideas
+   * de ejemplo (modo demo). `source` indica de dónde salieron.
    */
   static async generateGiftRecommendations(
     input: GiftSessionInput,
@@ -168,37 +171,48 @@ export class AIRecommendationService {
   ): Promise<{ candidates: GiftCandidate[]; source: AISource; fallbackReason?: string }> {
     const exclude = options.exclude ?? [];
     const mock = () => withoutExcluded(buildMockCandidates(input, exclude), exclude);
-    if (!env.hasOpenAIKey) {
-      if (process.env.NODE_ENV !== "test") {
-        console.warn("[AIRecommendationService] sin OPENAI_API_KEY, usando mock");
+    const reasons: string[] = [];
+
+    for (const provider of configuredProviders()) {
+      if (!isAvailable(provider.id)) {
+        reasons.push(`${provider.label}: en pausa`);
+        continue;
       }
-      return { candidates: mock(), source: "mock", fallbackReason: "sin OPENAI_API_KEY" };
+      try {
+        const candidates = withoutExcluded(await this.fromProvider(provider, input, exclude), exclude);
+        if (candidates.length >= 3) return { candidates, source: provider.id };
+        reasons.push(`${provider.label}: menos de 3 ideas nuevas`);
+      } catch (error) {
+        markFailure(provider.id, error);
+        // Una línea con la causa (ej. "429 insufficient_quota"), sin stack.
+        const reason =
+          error instanceof OpenAI.APIError
+            ? `${error.status} ${error.code ?? error.type ?? ""}`.trim()
+            : error instanceof Error
+              ? error.message
+              : String(error);
+        reasons.push(`${provider.label}: ${reason}`);
+        console.error(`[AIRecommendationService] ${provider.label} falló (${reason}), probando el siguiente`);
+      }
     }
 
-    try {
-      const candidates = withoutExcluded(await this.fromOpenAI(input, exclude), exclude);
-      if (candidates.length >= 3) return { candidates, source: "openai" };
-      return { candidates: mock(), source: "mock", fallbackReason: "OpenAI devolvió <3 candidatos nuevos" };
-    } catch (error) {
-      // Una línea con la causa (ej. "429 credit_balance_exhausted"), sin stack.
-      const reason =
-        error instanceof OpenAI.APIError
-          ? `${error.status} ${error.code ?? error.type ?? ""} ${error.message}`.trim()
-          : String(error);
-      console.error(`[AIRecommendationService] OpenAI falló, usando ideas de ejemplo: ${reason}`);
-      return { candidates: mock(), source: "mock", fallbackReason: String(error) };
+    const fallbackReason = reasons.length > 0 ? reasons.join(" · ") : "sin proveedores de IA configurados";
+    if (process.env.NODE_ENV !== "test") {
+      console.warn(`[AIRecommendationService] modo demo: ${fallbackReason}`);
     }
+    return { candidates: mock(), source: "mock", fallbackReason };
   }
 
-  private static async fromOpenAI(
+  private static async fromProvider(
+    provider: AIProvider,
     input: GiftSessionInput,
     exclude: string[] = []
   ): Promise<GiftCandidate[]> {
-    const client = new OpenAI({ apiKey: env.openAIKey });
+    const client = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseURL, maxRetries: 0 });
 
     const completion = await client.chat.completions.create(
       {
-        model: AI_MODEL,
+        model: provider.model,
         // Un poco más de variedad cuando se piden ideas nuevas.
         temperature: exclude.length > 0 ? 0.8 : 0.4,
         messages: [
@@ -219,23 +233,36 @@ export class AIRecommendationService {
             schema: RECOMMENDATION_SCHEMA,
           },
         },
-        max_tokens: 1800,
+        max_tokens: provider.maxTokens,
+        ...(provider.extra ?? {}),
       },
-      { timeout: 30000 }
+      { timeout: 25_000 }
     );
 
     const content = completion.choices[0]?.message?.content;
-    if (!content) throw new Error("Respuesta vacía de OpenAI");
+    if (!content) throw new Error("respuesta vacía");
 
-    const parsed = JSON.parse(content) as {
+    const parsed = parseJsonObject(content) as {
       recommendations?: Record<string, unknown>[];
     };
     if (!Array.isArray(parsed.recommendations)) {
-      throw new Error("Formato inesperado en la respuesta de OpenAI");
+      throw new Error("formato inesperado");
     }
 
     return parsed.recommendations
       .map(mapRawToCandidate)
       .filter((c) => c.name && c.whyItFits);
+  }
+}
+
+/** Algunos modelos envuelven el JSON en un bloque de código: se toma el objeto. */
+export function parseJsonObject(content: string): unknown {
+  try {
+    return JSON.parse(content);
+  } catch {
+    const start = content.indexOf("{");
+    const end = content.lastIndexOf("}");
+    if (start >= 0 && end > start) return JSON.parse(content.slice(start, end + 1));
+    throw new Error("JSON inválido");
   }
 }

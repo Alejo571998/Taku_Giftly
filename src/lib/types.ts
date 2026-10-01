@@ -71,7 +71,8 @@ export interface GiftOption {
   createdAt: string;
 }
 
-export type AISource = "openai" | "mock";
+/** De dónde salieron las ideas: un proveedor de IA o el modo demo. */
+export type AISource = "groq" | "gemini" | "openai" | "mock";
 
 export interface GiftSession {
   id: string;

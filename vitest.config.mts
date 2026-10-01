@@ -15,6 +15,8 @@ export default defineConfig({
       OPENAI_API_KEY: "",
       ML_CLIENT_ID: "",
       ML_CLIENT_SECRET: "",
+      GROQ_API_KEY: "",
+      GEMINI_API_KEY: "",
       GIFTLY_DATA_DIR: path.join(os.tmpdir(), `giftly-test-${Date.now()}`),
     },
   },
