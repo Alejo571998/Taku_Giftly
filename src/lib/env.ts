@@ -59,20 +59,40 @@ export const env = {
   },
   /**
    * URL pública real (links absolutos: previews de WhatsApp, metadata).
-   * Si NEXT_PUBLIC_APP_URL quedó en localhost en un deploy de Vercel, usa la
-   * URL de producción que Vercel expone automáticamente.
+   * Tolera valores cargados a mano ("taku.vercel.app", con comillas, con
+   * espacios o barra final): un valor mal escrito rompía el build entero.
+   * Si queda en localhost en un deploy de Vercel, usa la URL de producción
+   * que Vercel expone automáticamente.
    */
   get siteUrl() {
-    const configured = process.env.NEXT_PUBLIC_APP_URL;
-    if (configured && !/\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(configured)) {
-      return configured.replace(/\/$/, "");
-    }
-    const vercelHost =
-      process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
-    if (process.env.VERCEL && vercelHost) return `https://${vercelHost}`;
+    const configured = normalizeUrl(process.env.NEXT_PUBLIC_APP_URL);
+    if (configured && !isLocalhost(configured)) return configured;
+    const vercelHost = normalizeUrl(
+      process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL
+    );
+    if (process.env.VERCEL && vercelHost) return vercelHost;
     return configured ?? "http://localhost:3000";
   },
   get isLocalMode() {
     return !this.hasSupabase;
   },
 };
+
+/** "taku.vercel.app" / "'https://x.com/'" → "https://taku.vercel.app" (o null si es inválida). */
+export function normalizeUrl(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  let value = raw.trim().replace(/^["']+|["']+$/g, "").trim();
+  if (!value) return null;
+  if (!/^https?:\/\//i.test(value)) {
+    value = `${/^(localhost|127\.0\.0\.1)(:|$)/.test(value) ? "http" : "https"}://${value}`;
+  }
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+export function isLocalhost(url: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url);
+}

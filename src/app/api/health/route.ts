@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { env } from "@/lib/env";
+import { env, normalizeUrl } from "@/lib/env";
 import { configuredProviders, isAvailable, pingProvider } from "@/lib/ai/providers";
 import { diagnoseMercadoLibre } from "@/lib/products/mercadolibre";
 import { checkRateLimit, clientIp } from "@/lib/rate-limit";
@@ -27,6 +27,15 @@ export async function GET(req: NextRequest) {
   const providers = configuredProviders();
   if (providers.length === 0) {
     problems.push("No hay IA configurada (GROQ_API_KEY, GEMINI_API_KEY u OPENAI_API_KEY): modo demo.");
+  }
+  const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const normalizedAppUrl = normalizeUrl(rawAppUrl);
+  if (rawAppUrl && !normalizedAppUrl) {
+    problems.push(`NEXT_PUBLIC_APP_URL no es una dirección válida: se usa ${env.siteUrl}.`);
+  } else if (rawAppUrl && normalizedAppUrl !== rawAppUrl.trim().replace(/\/$/, "")) {
+    problems.push(
+      `NEXT_PUBLIC_APP_URL está incompleta ("${rawAppUrl.trim()}"): se usa ${normalizedAppUrl}. Conviene escribirla con https://.`
+    );
   }
   if (onVercel && /localhost/.test(env.appUrl)) {
     problems.push(
