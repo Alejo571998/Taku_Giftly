@@ -304,3 +304,42 @@ export async function findOffers(
   }
   return { offers: await viaCatalog(query, token, referencePrice), strategy: "catalog" };
 }
+
+/**
+ * Diagnóstico para /api/health?deep=1: qué responde Mercado Libre desde el
+ * servidor donde corre la app (los bloqueos pueden depender de la IP).
+ * Devuelve solo códigos HTTP y cantidades, nunca el token.
+ */
+export async function diagnoseMercadoLibre(query = "kit parrillero") {
+  const result: Record<string, string | number> = {};
+  let token: string;
+  try {
+    token = await getAccessToken();
+    result.token = "ok";
+  } catch (error) {
+    result.token = error instanceof MercadoLibreError ? error.status : String(error);
+    return result;
+  }
+  const probe = async (label: string, path: string) => {
+    const response = await fetch(`${API}${path}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(8_000),
+    }).catch((e: unknown) => ({ ok: false, status: String(e) }) as const);
+    if (!("json" in response)) {
+      result[label] = response.status;
+      return null;
+    }
+    const body = (await response.json().catch(() => null)) as { results?: { id: string }[] } | null;
+    result[label] = response.ok ? `${response.status} · ${body?.results?.length ?? 0} resultados` : response.status;
+    return response.ok ? body : null;
+  };
+  await probe("siteSearch", `/sites/MLA/search?q=${encodeURIComponent(query)}&limit=3`);
+  await probe("catalog", `/products/search?status=active&site_id=MLA&q=${encodeURIComponent(query)}&limit=3`);
+  try {
+    const { offers, strategy } = await findOffers(query, 150_000);
+    result.findOffers = `${strategy} · ${offers.length} ofertas`;
+  } catch (error) {
+    result.findOffers = error instanceof Error ? error.message : String(error);
+  }
+  return result;
+}

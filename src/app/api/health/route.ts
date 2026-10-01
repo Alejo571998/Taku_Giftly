@@ -1,10 +1,13 @@
+import type { NextRequest } from "next/server";
 import { env } from "@/lib/env";
+import { diagnoseMercadoLibre } from "@/lib/products/mercadolibre";
+import { checkRateLimit, clientIp } from "@/lib/rate-limit";
 
 /**
  * Estado de la configuración (sin exponer keys): sirve para verificar un
  * deploy. Ej: https://tu-app.vercel.app/api/health
  */
-export function GET() {
+export async function GET(req: NextRequest) {
   const onVercel = Boolean(process.env.VERCEL);
   const problems: string[] = [];
   if (!env.hasSupabase) {
@@ -28,6 +31,13 @@ export function GET() {
   }
   if (!env.hasMercadolibre) problems.push("Faltan ML_CLIENT_ID/ML_CLIENT_SECRET: precios estimados.");
 
+  // ?deep=1 prueba Mercado Libre desde este servidor (limitado por IP).
+  let mercadolibreCheck: Record<string, string | number> | undefined;
+  if (req.nextUrl.searchParams.get("deep") === "1" && env.hasMercadolibre) {
+    const rl = checkRateLimit(`health-deep:${clientIp(req)}`, 5, 10 * 60 * 1000);
+    mercadolibreCheck = rl.ok ? await diagnoseMercadoLibre() : { skipped: "rate limit" };
+  }
+
   return Response.json(
     {
       ok: !(onVercel && !env.hasSupabase),
@@ -38,6 +48,7 @@ export function GET() {
       openai: env.hasOpenAIKey,
       mercadolibre: env.hasMercadolibre,
       problems,
+      ...(mercadolibreCheck ? { mercadolibreCheck } : {}),
     },
     { headers: { "Cache-Control": "no-store" } }
   );
