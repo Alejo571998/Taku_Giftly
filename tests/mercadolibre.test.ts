@@ -181,3 +181,25 @@ describe("isRelevant", () => {
     expect(isRelevant(title, query)).toBe(expected);
   });
 });
+
+describe("token de Mercado Libre", () => {
+  beforeEach(() => {
+    process.env.ML_CLIENT_ID = "id";
+    process.env.ML_CLIENT_SECRET = "secret";
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    process.env.ML_CLIENT_ID = "";
+    process.env.ML_CLIENT_SECRET = "";
+  });
+
+  it("búsquedas en paralelo comparten un solo pedido de token", async () => {
+    const fetchMock = mockFetch((url) =>
+      url.includes("/sites/MLA/search") ? { status: 200, body: { results: [] } } : { status: 200, body: { results: [] } }
+    );
+    const { findOffers } = await loadModule();
+    await Promise.all([findOffers("a"), findOffers("b"), findOffers("c"), findOffers("d"), findOffers("e")]);
+    const tokenCalls = fetchMock.mock.calls.filter(([u]) => String(u).endsWith("/oauth/token"));
+    expect(tokenCalls).toHaveLength(1);
+  });
+});

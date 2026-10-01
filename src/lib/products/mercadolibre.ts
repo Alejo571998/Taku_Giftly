@@ -28,10 +28,24 @@ export class MercadoLibreError extends Error {
   }
 }
 
+let pendingToken: Promise<string> | null = null;
+
+/**
+ * Token de aplicación (client_credentials), cacheado hasta que vence.
+ * Las búsquedas de una recomendación corren en paralelo: comparten un único
+ * pedido de token (en frío, varios pedidos simultáneos fallaban).
+ */
 export async function getAccessToken(): Promise<string> {
   if (tokenCache && tokenCache.expiresAt > Date.now() + 60_000) {
     return tokenCache.accessToken;
   }
+  pendingToken ??= requestToken().finally(() => {
+    pendingToken = null;
+  });
+  return pendingToken;
+}
+
+async function requestToken(attempt = 1): Promise<string> {
   const body = new URLSearchParams({
     grant_type: "client_credentials",
     client_id: env.mercadolibreClientId,
@@ -45,7 +59,14 @@ export async function getAccessToken(): Promise<string> {
     },
     body: body.toString(),
     signal: AbortSignal.timeout(10_000),
+  }).catch((error: unknown) => {
+    if (attempt < 2) return null;
+    throw error;
   });
+  if (!response || (!response.ok && attempt < 2 && (response.status === 429 || response.status >= 500))) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return requestToken(attempt + 1);
+  }
   if (!response.ok) {
     throw new MercadoLibreError(`token: ${response.status}`, response.status);
   }
