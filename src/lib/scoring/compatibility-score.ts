@@ -193,6 +193,11 @@ const RELATED_INTERESTS: Record<string, string[]> = {
   experiencias: ["viajes", "gastronomia"],
 };
 
+/** Intereses "primos" de uno dado (ej. cocina → gastronomía, café). */
+export function relatedInterests(interest: string): string[] {
+  return RELATED_INTERESTS[interest] ?? [];
+}
+
 /**
  * Qué tan bien el regalo cubre los gustos. A diferencia de Jaccard, no
  * castiga a quien marcó muchos intereses: con una coincidencia directa el

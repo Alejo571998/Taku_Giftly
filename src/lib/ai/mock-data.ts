@@ -1,4 +1,5 @@
 import { interestLabel, occasionLabel } from "@/lib/catalog";
+import { computeAvoidancePenalty, relatedInterests } from "@/lib/scoring/compatibility-score";
 import type {
   GiftCandidate,
   GiftSessionInput,
@@ -16,6 +17,8 @@ export interface MockOption {
   pros: string[];
   cons: string[];
   keywords: string[];
+  /** Solo tiene sentido para estas relaciones (ej. planes románticos). */
+  onlyFor?: string[];
 }
 
 interface MockTemplate {
@@ -66,7 +69,7 @@ const GAMING_TEMPLATE: MockTemplate = {
       estimatedPrice: 50000,
       giftType: "giftcard",
       pros: [
-        "Imposible errar: elige él mismo",
+        "Imposible errar: elige a su gusto",
         "Se puede combinar con otro regalo",
         "Sirve para DLC, juegos y contenido extra",
       ],
@@ -195,7 +198,7 @@ const PADRE_TEMPLATE: MockTemplate = {
       name: "Camiseta de fútbol personalizada",
       category: "deportes",
       description:
-        "La camiseta de su equipo favorito con su nombre y número preferido en la espalda, preparada especialmente para él.",
+        "La camiseta de su equipo favorito con su nombre y número preferido en la espalda, preparada especialmente para esa persona.",
       whyItFits:
         "El fútbol es una de sus pasiones y una camiseta con su nombre es un regalo personal y emocional que no se consigue en cualquier lado.",
       tags: ["deportes", "otros"],
@@ -239,7 +242,7 @@ const PADRE_TEMPLATE: MockTemplate = {
       description:
         "Dos entradas para ver a su equipo en la cancha, para que viva el partido en persona en lugar de mirarlo por televisión.",
       whyItFits:
-        "Le apasiona el fútbol y nada supera la experiencia en vivo. Compartís ese momento con él y el regalo se convierte en un plan.",
+        "Le apasiona el fútbol y nada supera la experiencia en vivo. Compartir ese momento convierte el regalo en un plan.",
       tags: ["deportes", "experiencias"],
       estimatedPrice: 140000,
       giftType: "experience",
@@ -284,6 +287,7 @@ const PAREJA_TEMPLATE: MockTemplate = {
         "Puede superar un presupuesto ajustado",
       ],
       keywords: ["escapada", "viaje", "posada", "estancia", "romantico", "romántico", "finde"],
+      onlyFor: ["pareja"],
     },
     {
       name: "Álbum de fotos personalizado",
@@ -305,6 +309,7 @@ const PAREJA_TEMPLATE: MockTemplate = {
         "Demora unos días en imprimirse",
       ],
       keywords: ["album", "álbum", "foto", "fotos", "recuerdo", "impresion", "impresión"],
+      onlyFor: ["pareja"],
     },
     {
       name: "Cámara instantánea",
@@ -368,6 +373,7 @@ const PAREJA_TEMPLATE: MockTemplate = {
         "Depende del lugar y la disponibilidad",
       ],
       keywords: ["cena", "velas", "romantico", "romántico", "restaurante", "aniversario"],
+      onlyFor: ["pareja"],
     },
   ],
 };
@@ -399,48 +405,6 @@ const GENERIC_TEMPLATE: MockTemplate = {
         "Menos 'objeto' que un regalo físico",
       ],
       keywords: ["experiencia", "actividad", "salida", "plan", "taller"],
-    },
-    {
-      name: "Kit de café de especialidad",
-      category: "cafe",
-      description:
-        "Café de especialidad en grano, molinillo manual y una taza de diseño, para empezar el día con un rito propio.",
-      whyItFits:
-        "El café es un placer cotidiano que casi nadie se regala a sí mismo. Un kit bien armado convierte el arranque del día en un momento especial.",
-      tags: ["cafe", "gastronomia"],
-      estimatedPrice: 60000,
-      giftType: "physical",
-      pros: [
-        "Regalo seguro para amantes del café",
-        "Precio accesible y con mucha calidad percibida",
-        "Se usa todos los días",
-      ],
-      cons: [
-        "Solo le gusta si es cafetero",
-        "El molinillo manual requiere algo de práctica",
-      ],
-      keywords: ["cafe", "café", "molinillo", "taza", "granos"],
-    },
-    {
-      name: "Libro elegido a medida",
-      category: "libros",
-      description:
-        "Un libro elegido a partir de sus géneros favoritos, con dedicatoria personalizada en la primera página.",
-      whyItFits:
-        "Un libro bien elegido dice 'te conozco'. Con tu ayuda armamos una selección corta de títulos según sus lecturas y género preferido.",
-      tags: ["libros", "arte"],
-      estimatedPrice: 45000,
-      giftType: "physical",
-      pros: [
-        "Altamente personal con la dedicatoria",
-        "Regalo íntimo y con contenido real",
-        "Precio accesible",
-      ],
-      cons: [
-        "Riesgo de que ya lo haya leído",
-        "Hay que conocer bien sus gustos de lectura",
-      ],
-      keywords: ["libro", "lectura", "novela", "leer"],
     },
     {
       name: "Gift card de su tienda favorita",
@@ -487,10 +451,203 @@ const GENERIC_TEMPLATE: MockTemplate = {
   ],
 };
 
+const ESTILO_TEMPLATE: MockTemplate = {
+  id: "estilo",
+  matchInterests: ["belleza", "moda", "musica", "arte", "fitness", "cine", "autos", "libros", "viajes"],
+  matchRelationships: ["madre", "padre", "pareja", "amigo", "hermano", "hijo", "companiero", "otro"],
+  matchAgeRanges: [],
+  hintKeywords: [],
+  options: [
+    {
+      name: "Kit de spa y cuidado facial",
+      category: "belleza",
+      description:
+        "Set de cuidado con limpiador, sérum, crema hidratante y máscara facial, en un estuche lindo para regalar.",
+      whyItFits:
+        "Le gusta cuidarse: un ritual de spa en casa es un mimo que se usa todos los días y se disfruta sin apuro.",
+      tags: ["belleza"],
+      estimatedPrice: 70000,
+      giftType: "physical",
+      pros: ["Se usa a diario", "Fácil de regalar y de recibir"],
+      cons: ["Conviene saber su tipo de piel"],
+      keywords: ["spa", "piel", "crema", "facial", "cuidado", "relajar"],
+    },
+    {
+      name: "Parlante bluetooth resistente al agua",
+      category: "musica",
+      description:
+        "Parlante portátil con buen sonido, batería de larga duración y resistencia al agua para llevar a todos lados.",
+      whyItFits:
+        "La música lo acompaña siempre: un parlante portátil suma a cada momento, en casa, en el patio o de viaje.",
+      tags: ["musica", "tecnologia"],
+      estimatedPrice: 90000,
+      giftType: "physical",
+      pros: ["Uso diario", "Sirve en casa y afuera"],
+      cons: ["Si ya tiene uno bueno, puede repetirse"],
+      keywords: ["parlante", "musica", "música", "escuchar", "bluetooth"],
+    },
+    {
+      name: "Taller de cerámica o pintura",
+      category: "arte",
+      description:
+        "Una clase o taller presencial de cerámica o pintura, con materiales incluidos, para crear algo con sus manos.",
+      whyItFits:
+        "Le atrae el arte: un taller le da una experiencia distinta y se lleva algo hecho por sí mismo.",
+      tags: ["arte", "experiencias"],
+      estimatedPrice: 80000,
+      giftType: "experience",
+      pros: ["Experiencia + recuerdo tangible", "Ideal para desconectar"],
+      cons: ["Hay que coordinar fecha"],
+      keywords: ["ceramica", "cerámica", "pintar", "pintura", "taller", "manualidades"],
+    },
+    {
+      name: "Kit de entrenamiento en casa",
+      category: "fitness",
+      description:
+        "Bandas de resistencia, mat antideslizante y botella térmica para entrenar en casa o al aire libre.",
+      whyItFits:
+        "Le gusta moverse: con este kit entrena donde quiera, sin depender del gimnasio.",
+      tags: ["fitness", "deportes"],
+      estimatedPrice: 85000,
+      giftType: "physical",
+      pros: ["Práctico y versátil", "Ocupa poco lugar"],
+      cons: ["Si va al gimnasio, quizás ya tenga equipamiento"],
+      keywords: ["gimnasio", "gym", "entrenar", "yoga", "correr", "pilates"],
+    },
+    {
+      name: "Billetera de cuero artesanal",
+      category: "moda",
+      description:
+        "Billetera de cuero hecha a mano, con terminaciones prolijas, que mejora con el uso.",
+      whyItFits:
+        "Le importa vestirse bien: un accesorio de cuero de calidad se usa todos los días y dura años.",
+      tags: ["moda"],
+      estimatedPrice: 60000,
+      giftType: "physical",
+      pros: ["Clásico que no pasa de moda", "Uso diario"],
+      cons: ["Es una elección de estilo personal"],
+      keywords: ["billetera", "cuero", "cinturon", "cinturón", "cartera"],
+    },
+    {
+      name: "Suscripción a una plataforma de streaming",
+      category: "cine",
+      description:
+        "Varios meses de una plataforma de series y películas, para ver lo que quiera cuando quiera.",
+      whyItFits:
+        "Disfruta del cine y las series: varios meses de catálogo son planes asegurados para muchas noches.",
+      tags: ["cine"],
+      estimatedPrice: 30000,
+      giftType: "service",
+      pros: ["Se aprovecha durante meses", "Llega al instante"],
+      cons: ["Puede que ya tenga esa plataforma"],
+      keywords: ["serie", "series", "peli", "pelicula", "película", "streaming", "netflix"],
+    },
+    {
+      name: "Libro de cocina de autor",
+      category: "libros",
+      description:
+        "Un libro de recetas de un cocinero reconocido, con fotos y técnicas para animarse a platos nuevos.",
+      whyItFits:
+        "Une dos cosas que disfruta, leer y cocinar: inspiración para probar recetas nuevas en casa.",
+      tags: ["libros", "cocina", "gastronomia"],
+      estimatedPrice: 40000,
+      giftType: "physical",
+      pros: ["Se usa una y otra vez", "Lindo objeto para la cocina"],
+      cons: ["Conviene elegir un estilo de cocina que le guste"],
+      keywords: ["receta", "recetas", "libro", "cocinar"],
+    },
+    {
+      name: "Kit de limpieza y detailing para el auto",
+      category: "autos",
+      description:
+        "Shampoo, cera, microfibras y aromatizante para dejar el auto impecable por dentro y por fuera.",
+      whyItFits:
+        "Cuida su auto con dedicación: un kit completo de detailing es un regalo práctico que va a usar seguido.",
+      tags: ["autos"],
+      estimatedPrice: 75000,
+      giftType: "physical",
+      pros: ["Muy práctico", "Se nota el resultado"],
+      cons: ["Si lo lleva a lavar, puede que no lo use"],
+      keywords: ["auto", "coche", "lavar", "limpieza", "cera"],
+    },
+    {
+      name: "Planta de interior con maceta de diseño",
+      category: "arte",
+      description:
+        "Una planta de interior fácil de cuidar en una maceta de cerámica de diseño, lista para decorar.",
+      whyItFits:
+        "Le gustan las cosas lindas para su casa: una planta en una buena maceta decora y se cuida sola.",
+      tags: ["arte", "otros"],
+      estimatedPrice: 45000,
+      giftType: "physical",
+      pros: ["Decora y dura", "Fácil de cuidar"],
+      cons: ["Necesita un poco de luz"],
+      keywords: ["planta", "plantas", "jardin", "jardín", "maceta", "deco"],
+    },
+    {
+      name: "Mochila de viaje de cabina",
+      category: "viajes",
+      description:
+        "Mochila con medidas de cabina, compartimento para notebook y apertura tipo valija.",
+      whyItFits:
+        "Le encanta viajar: una mochila pensada para avión hace cada escapada más cómoda.",
+      tags: ["viajes", "moda"],
+      estimatedPrice: 110000,
+      giftType: "physical",
+      pros: ["Evita pagar valija", "Sirve también para el día a día"],
+      cons: ["Si viaja con valija grande, la usará menos"],
+      keywords: ["mochila", "viaje", "valija", "equipaje", "avion", "avión"],
+    },
+    {
+      name: "Kit de café de especialidad",
+      category: "cafe",
+      description:
+        "Café de especialidad en grano, molinillo manual y una taza de diseño, para empezar el día con un rito propio.",
+      whyItFits:
+        "El café es un placer cotidiano que casi nadie se regala a sí mismo. Un kit bien armado convierte el arranque del día en un momento especial.",
+      tags: ["cafe", "gastronomia"],
+      estimatedPrice: 60000,
+      giftType: "physical",
+      pros: [
+        "Regalo seguro para amantes del café",
+        "Precio accesible y con mucha calidad percibida",
+        "Se usa todos los días",
+      ],
+      cons: [
+        "Solo le gusta si es cafetero",
+        "El molinillo manual requiere algo de práctica",
+      ],
+      keywords: ["cafe", "café", "molinillo", "taza", "granos"],
+    },
+    {
+      name: "Libro elegido a medida",
+      category: "libros",
+      description:
+        "Un libro elegido a partir de sus géneros favoritos, con dedicatoria personalizada en la primera página.",
+      whyItFits:
+        "Un libro bien elegido dice 'te conozco'. Con tu ayuda armamos una selección corta de títulos según sus lecturas y género preferido.",
+      tags: ["libros", "arte"],
+      estimatedPrice: 45000,
+      giftType: "physical",
+      pros: [
+        "Altamente personal con la dedicatoria",
+        "Regalo íntimo y con contenido real",
+        "Precio accesible",
+      ],
+      cons: [
+        "Riesgo de que ya lo haya leído",
+        "Hay que conocer bien sus gustos de lectura",
+      ],
+      keywords: ["libro", "lectura", "novela", "leer"],
+    },
+  ],
+};
+
 const TEMPLATES: MockTemplate[] = [
   GAMING_TEMPLATE,
   PADRE_TEMPLATE,
   PAREJA_TEMPLATE,
+  ESTILO_TEMPLATE,
   GENERIC_TEMPLATE,
 ];
 
@@ -513,39 +670,6 @@ function hintMatches(hint: string, keywords: string[], name: string): boolean {
     if (haystack.includes(k) || hintTokens.has(k)) return true;
   }
   return nameTokens.length > 0 && haystack.includes(nameTokens);
-}
-
-function pickTemplate(input: GiftSessionInput): MockTemplate {
-  const interests = input.interests.map((i) => i.toLowerCase());
-  const hintTokens = new Set(tokenize(input.recentHints));
-
-  let best: MockTemplate = GENERIC_TEMPLATE;
-  let bestScore = 0;
-
-  for (const template of TEMPLATES) {
-    if (template === GENERIC_TEMPLATE) continue;
-    // Relevancia real: gustos o pistas. Sin eso, la plantilla no aplica
-    // (la relación o la edad solas no alcanzan para proponer, ej., gaming).
-    let relevance = 0;
-    for (const interest of interests) {
-      if (template.matchInterests.includes(interest)) relevance += 2;
-    }
-    for (const kw of template.hintKeywords) {
-      if (hintTokens.has(kw) || input.recentHints.toLowerCase().includes(kw)) {
-        relevance += 0.75;
-      }
-    }
-    if (relevance === 0) continue;
-    let score = relevance;
-    if (template.matchRelationships.includes(input.recipientRelationship)) score += 1;
-    if (template.matchAgeRanges.includes(input.ageRange)) score += 0.5;
-    if (score > bestScore) {
-      bestScore = score;
-      best = template;
-    }
-  }
-
-  return best;
 }
 
 function priceForBands(base: number, budgetMin: number | null, budgetMax: number | null, index: number, total: number): number {
@@ -593,35 +717,98 @@ function honestReason(
   return `Va directo a su gusto por ${likes}${occasion ? ` y es un buen regalo para ${occasion.toLowerCase()}` : ""}. ${option.description}`;
 }
 
+interface ScoredOption {
+  option: MockOption;
+  template: MockTemplate;
+  score: number;
+  matchesHint: boolean;
+  /** Coincide directo con un gusto o responde a la pista. */
+  strong: boolean;
+}
+
+/** Puntaje de una idea para esta persona (modo demo). */
+function scoreOption(
+  option: MockOption,
+  template: MockTemplate,
+  input: GiftSessionInput
+): ScoredOption | null {
+  if (option.onlyFor && !option.onlyFor.includes(input.recipientRelationship)) return null;
+  if (computeAvoidancePenalty(option.name, option.category, option.tags, input.thingsToAvoid) > 0) {
+    return null;
+  }
+  // "otros" no es un gusto concreto: no cuenta como coincidencia.
+  const interests = input.interests.map((i) => i.toLowerCase()).filter((i) => i !== "otros");
+  const direct = option.tags.filter((t) => t !== "otros" && interests.includes(t)).length;
+  const related =
+    direct === 0 &&
+    interests.some((i) => relatedInterests(i).some((r) => option.tags.includes(r)));
+  const isGeneric = template.id === "generico";
+  const matchesHint = !isGeneric && hintMatches(input.recentHints ?? "", option.keywords, option.name);
+
+  let score = direct * 3 + (related ? 1 : 0) + (matchesHint ? 4 : 0);
+  if (template.matchRelationships.includes(input.recipientRelationship)) score += 0.5;
+  if (template.matchAgeRanges.includes(input.ageRange)) score += 0.25;
+  // Se prioriza lo que entra en el presupuesto (sin cambiar su precio).
+  const price = option.estimatedPrice;
+  if (input.budgetMax != null && price > input.budgetMax * 1.25) score -= 2;
+  if (input.budgetMin != null && input.budgetMin > 0 && price < input.budgetMin * 0.5) score -= 1;
+  return { option, template, score, matchesHint, strong: direct > 0 || matchesHint };
+}
+
+/**
+ * Modo demo: elige idea por idea del catálogo según gustos, pistas y
+ * relación (no una plantilla fija), con variedad de categorías. Si no
+ * alcanzan las relevantes, completa con ideas genéricas.
+ */
 export function buildMockCandidates(
   input: GiftSessionInput,
   exclude: string[] = []
 ): GiftCandidate[] {
   const excluded = new Set(exclude.map((n) => n.toLowerCase()));
-  const primary = pickTemplate(input);
-  // "Más ideas": si la plantilla elegida ya se usó, se sigue con la genérica.
-  const unused = primary.options.filter((o) => !excluded.has(o.name.toLowerCase()));
-  const template: MockTemplate =
-    unused.length >= 3
-      ? { ...primary, options: unused }
-      : {
-          ...GENERIC_TEMPLATE,
-          options: [...unused, ...GENERIC_TEMPLATE.options].filter(
-            (o, i, all) =>
-              !excluded.has(o.name.toLowerCase()) &&
-              all.findIndex((x) => x.name === o.name) === i
-          ),
-        };
-  const hints = input.recentHints ?? "";
-  const isGeneric = template.id === "generico";
+  const seen = new Set<string>();
+  const pool: ScoredOption[] = [];
+  for (const template of TEMPLATES) {
+    for (const option of template.options) {
+      const key = option.name.toLowerCase();
+      if (excluded.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      const scored = scoreOption(option, template, input);
+      if (scored) pool.push(scored);
+    }
+  }
 
-  return template.options.map((option, index) => {
-    // Una idea genérica ("Accesorio para su hobby") no puede responder a una
-    // pista concreta aunque comparta alguna palabra.
-    const matchesHint = !isGeneric && hintMatches(hints, option.keywords, option.name);
-    // Si el template es genérico (ninguno calzó, bestScore < 1), aplicar bandas de precio §8
+  const byScore = (a: ScoredOption, b: ScoredOption) => b.score - a.score;
+  const specific = pool.filter((s) => s.template.id !== "generico");
+  const strong = specific.filter((s) => s.strong).sort(byScore);
+  // Ideas "primas" (intereses relacionados): solo para completar.
+  const weak = specific.filter((s) => !s.strong && s.score >= 1).sort(byScore);
+  // Genéricas: primero las abiertas (eligen a su gusto), después las de nicho.
+  const OPEN_FIRST = ["giftcard", "experience", "service", "physical"];
+  const generic = pool
+    .filter((s) => s.template.id === "generico")
+    .sort((a, b) => OPEN_FIRST.indexOf(a.option.giftType) - OPEN_FIRST.indexOf(b.option.giftType));
+
+  // Variedad: como mucho 2 ideas de la misma categoría.
+  const picked: ScoredOption[] = [];
+  const perCategory = new Map<string, number>();
+  for (const s of strong) {
+    if (picked.length >= 5) break;
+    const used = perCategory.get(s.option.category) ?? 0;
+    if (used >= 2) continue;
+    perCategory.set(s.option.category, used + 1);
+    picked.push(s);
+  }
+  for (const s of [...weak, ...generic]) {
+    if (picked.length >= 3) break;
+    picked.push(s);
+  }
+
+  return picked.map(({ option, template, matchesHint }, index) => {
+    const isGeneric = template.id === "generico";
+    // Ideas concretas: su precio estimado real (no se "acomoda" al presupuesto).
+    // Ideas genéricas (gift card, experiencia a elección): monto dentro del presupuesto.
     const estimatedPrice = isGeneric
-      ? priceForBands(option.estimatedPrice, input.budgetMin, input.budgetMax, index, template.options.length)
+      ? priceForBands(option.estimatedPrice, input.budgetMin, input.budgetMax, index, picked.length)
       : option.estimatedPrice;
     const budgetFit =
       input.budgetMax != null && estimatedPrice > input.budgetMax
@@ -630,10 +817,11 @@ export function buildMockCandidates(
           ? "under"
           : "within";
 
-    // En genérico, inyectar al menos un interés real en tags para que el scoring no sea 0
-    const tags = isGeneric && input.interests.length > 0
-      ? Array.from(new Set([...option.tags, input.interests[0].toLowerCase()]))
-      : option.tags;
+    // En genérico, sumar un interés real a los tags para que el scoring no sea 0
+    const tags =
+      isGeneric && input.interests.length > 0
+        ? Array.from(new Set([...option.tags, input.interests[0].toLowerCase()]))
+        : option.tags;
 
     return {
       name: option.name,
